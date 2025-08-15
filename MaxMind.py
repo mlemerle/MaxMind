@@ -1249,6 +1249,109 @@ def get_daily_topic_suggestion() -> Dict[str, Any]:
         **TOPIC_KNOWLEDGE_BASE[fallback_key]
     }
 
+def generate_category_topic(category: str) -> Dict[str, Any]:
+    """Generate a topic suggestion based on selected category"""
+    import random
+    
+    # Map display categories to internal topic pools
+    category_mapping = {
+        "Psychology": "psychology",
+        "Neuroscience": "neuroscience", 
+        "Philosophy": "philosophy",
+        "History": "history",
+        "Mathematics": "probability",  # Use existing math content
+        "Physics": "neuroscience",    # Map to related content
+        "Biology": "neuroscience",    # Map to neuroscience
+        "Computer Science": "cognitive_science",
+        "Economics": "economics",
+        "Literature": "philosophy"    # Map to philosophy
+    }
+    
+    topic_key = category_mapping.get(category, "psychology")
+    
+    # Get topic pools (these were defined earlier in the file)
+    topic_pools = {
+        "philosophy": {
+            1: ["Socratic Method", "Stoicism basics", "Plato's Cave Allegory", "Aristotelian Ethics", "Free Will vs Determinism"],
+            2: ["Existentialism", "Phenomenology", "Virtue Ethics", "Deontological Ethics", "Philosophy of Mind"],
+            3: ["Logical Positivism", "Post-Structuralism", "Modal Logic", "Philosophy of Language", "Metaphysics of Time"]
+        },
+        "psychology": {
+            1: ["Cognitive Biases", "Classical Conditioning", "Growth Mindset", "Maslow's Hierarchy", "Social Psychology"],
+            2: ["Dual Process Theory", "Flow State", "Intrinsic Motivation", "Attachment Theory", "Cognitive Dissonance"],
+            3: ["Terror Management Theory", "Social Identity Theory", "Prospect Theory", "Embodied Cognition", "Theory of Mind"]
+        },
+        "neuroscience": {
+            1: ["Neuroplasticity", "Dopamine and Motivation", "Memory Formation", "Sleep and Brain Health", "Stress Response"],
+            2: ["Prefrontal Cortex Function", "Neurotransmitter Systems", "Cognitive Load Theory", "Working Memory", "Attention Networks"],
+            3: ["Default Mode Network", "Hemispheric Specialization", "Synaptic Plasticity", "Neurogenesis", "Glial Cell Function"]
+        },
+        "history": {
+            1: ["Industrial Revolution", "Enlightenment Era", "Renaissance", "Ancient Greek Democracy", "Roman Empire"],
+            2: ["Scientific Revolution", "Age of Exploration", "French Revolution", "American Civil War", "World War I"],
+            3: ["Weimar Republic", "Decolonization", "Cold War Dynamics", "Medieval Scholasticism", "Byzantine Empire"]
+        },
+        "economics": {
+            1: ["Supply and Demand", "Opportunity Cost", "Market Failures", "Behavioral Economics", "Public Goods"],
+            2: ["Game Theory", "Information Asymmetry", "Network Effects", "Prisoner's Dilemma", "Tragedy of Commons"],
+            3: ["Mechanism Design", "Principal-Agent Problems", "Auction Theory", "Monetary Policy", "Economic Cycles"]
+        },
+        "cognitive_science": {
+            1: ["System 1 vs System 2", "Heuristics and Biases", "Mental Models", "Cognitive Load", "Pattern Recognition"],
+            2: ["Metacognition", "Transfer Learning", "Expertise Development", "Analogical Reasoning", "Conceptual Change"],
+            3: ["Embodied Cognition", "Extended Mind", "Cognitive Architectures", "Computational Models", "Consciousness"]
+        },
+        "probability": {  # For Mathematics category
+            1: ["Bayes' Theorem", "Expected Value", "Law of Large Numbers", "Central Limit Theorem", "Probability Trees"],
+            2: ["Conditional Probability", "Markov Chains", "Statistical Inference", "Confidence Intervals", "Hypothesis Testing"],
+            3: ["Bayesian Networks", "Monte Carlo Methods", "Information Theory", "Decision Theory", "Stochastic Processes"]
+        }
+    }
+    
+    # Determine difficulty level based on user progress (simplified)
+    state = S()
+    if "topic_suggestions" not in state:
+        state["topic_suggestions"] = {"study_history": []}
+    
+    study_count = len(state["topic_suggestions"]["study_history"])
+    if study_count < 5:
+        difficulty = 1
+    elif study_count < 15:
+        difficulty = 2
+    else:
+        difficulty = 3
+    
+    # Get topic from appropriate category and difficulty
+    if topic_key in topic_pools and difficulty in topic_pools[topic_key]:
+        topics = topic_pools[topic_key][difficulty]
+        selected_topic = random.choice(topics)
+        
+        return {
+            "title": selected_topic,
+            "description": f"A {['beginner', 'intermediate', 'advanced'][difficulty-1]} topic in {category.lower()}",
+            "category": category,
+            "difficulty": difficulty,
+            "key": f"{topic_key}_{selected_topic.lower().replace(' ', '_')}"
+        }
+    
+    # Fallback to existing knowledge base
+    fallback_topics = [k for k, v in TOPIC_KNOWLEDGE_BASE.items() if v.get("category", "").startswith(topic_key[:4])]
+    if fallback_topics:
+        topic_key = random.choice(fallback_topics)
+        return {
+            "key": topic_key,
+            **TOPIC_KNOWLEDGE_BASE[topic_key]
+        }
+    
+    # Final fallback
+    return {
+        "title": f"{category} Study Topic",
+        "description": f"Explore a topic in {category.lower()}",
+        "category": category,
+        "difficulty": 1,
+        "key": f"{category.lower()}_general"
+    }
+
 def complete_topic_study(topic_key: str, understanding_rating: int, notes: str = ""):
     """Mark a topic as studied and save progress"""
     state = S()
@@ -1485,11 +1588,11 @@ def page_dashboard():
     
     styles = get_card_styles()
     
-    # Gold gradient for 100% completion, regular gradient otherwise
+    # Progress bar styling without emojis
     if progress_pct == 100:
         progress_gradient = "linear-gradient(90deg, #FFD700 0%, #FFA500 50%, #FFD700 100%)"
         progress_text_color = "#000000"
-        progress_celebration = "🏆 PERFECT DAY! 🏆"
+        progress_celebration = "PERFECT DAY"
     else:
         progress_gradient = "linear-gradient(90deg, #58a6ff 0%, #238636 100%)" if S().get("settings", {}).get("darkMode", False) else "linear-gradient(90deg, #007aff 0%, #00d4ff 100%)"
         progress_text_color = styles['text_color']
@@ -1501,19 +1604,19 @@ def page_dashboard():
     <div style="
         background: {styles['background']};
         padding: 1.5rem;
-        border-radius: 16px;
+        border-radius: 12px;
         border: {styles['border']};
         box-shadow: {styles['shadow']};
-        margin-bottom: 2rem;
+        margin-bottom: 1.5rem;
     ">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <div style="font-weight: 600; color: {progress_text_color};">{progress_celebration}</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: {styles['accent_color']};">{completed_count}/{total_activities}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <div style="font-weight: 600; color: {progress_text_color}; font-size: 1.1rem;">{progress_celebration}</div>
+            <div style="font-size: 1.25rem; font-weight: 700; color: {styles['accent_color']};">{completed_count}/{total_activities}</div>
         </div>
         <div style="
             background: {background_bar};
-            border-radius: 12px;
-            height: 12px;
+            border-radius: 8px;
+            height: 8px;
             overflow: hidden;
             margin-bottom: 0.5rem;
         ">
@@ -1521,193 +1624,239 @@ def page_dashboard():
                 background: {progress_gradient};
                 height: 100%;
                 width: {progress_pct}%;
-                border-radius: 12px;
+                border-radius: 8px;
                 transition: width 0.3s ease;
-                box-shadow: {'0 0 10px rgba(255, 215, 0, 0.5)' if progress_pct == 100 else 'none'};
+                box-shadow: {'0 0 8px rgba(255, 215, 0, 0.4)' if progress_pct == 100 else 'none'};
             "></div>
         </div>
-        <div style="color: {progress_text_color}; font-size: 0.875rem; text-align: center; font-weight: {'bold' if progress_pct == 100 else 'normal'};">{progress_pct}% Complete</div>
+        <div style="color: {progress_text_color}; font-size: 0.85rem; text-align: center; font-weight: {'bold' if progress_pct == 100 else 'normal'};">{progress_pct}% Complete</div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Apple-style metrics
-    st.markdown("""
-    <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
-    </div>
-    """, unsafe_allow_html=True)
+    # Four main sections with clean dropdown functionality
+    col1, col2, col3, col4 = st.columns(4)
     
-    col1, col2, col3 = st.columns(3)
+    # Section 1: Spaced Learning (includes Review, Topic Study, World Model)
     with col1:
-        dc = len(due_cards(S()))
-        review_check = "✓" if completed["review"] else "○"
-        styles = get_card_styles()
+        # Calculate spaced learning completion
+        spaced_checks = {
+            "review": completed.get("review", False),
+            "topic_study": completed.get("topic_study", False),
+            "world_model_a": completed.get("world_model_a", False),
+            "world_model_b": completed.get("world_model_b", False)
+        }
+        spaced_completed = sum(1 for v in spaced_checks.values() if v)
+        all_spaced_complete = spaced_completed == 4
+        
         st.markdown(f"""
         <div style="
             background: {styles['background']};
-            padding: 1.5rem;
-            border-radius: 16px;
+            padding: 1.25rem;
+            border-radius: 12px;
             border: {styles['border']};
             box-shadow: {styles['shadow']};
             text-align: center;
-            transition: transform 0.2s ease;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-bottom: 0.75rem;
+            min-height: 140px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         ">
-            <div style="font-size: 1.5rem; margin-bottom: 0.5rem; color: {'#22c55e' if completed['review'] else styles['muted_color']};">{review_check}</div>
-            <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem;">Spaced Review</div>
-            <div style="font-size: 2rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{dc}</div>
-            <div style="color: {styles['muted_color']}; font-size: 0.875rem;">cards due</div>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.button("Start Review", key="review_btn", use_container_width=True):
-            st.session_state["page"] = "Spaced Review"
-            st.rerun()
-        if st.button("Review Details", key="toggle_review", use_container_width=True):
-            st.session_state.show_review_details = not st.session_state.show_review_details
-    
-    with col2:
-        drill_checks = {
-            "nback": "✓" if completed["nback"] else "○",
-            "task_switching": "✓" if completed["task_switching"] else "○", 
-            "complex_span": "✓" if completed["complex_span"] else "○",
-            "gng": "✓" if completed["gng"] else "○",
-            "processing_speed": "✓" if completed["processing_speed"] else "○"
-        }
-        completed_drills = sum(1 for v in drill_checks.values() if v == "✓")
-        st.markdown(f"""
-        <div style="
-            background: {styles['background']};
-            padding: 1.5rem;
-            border-radius: 16px;
-            border: {styles['border']};
-            box-shadow: {styles['shadow']};
-            text-align: center;
-        ">
-            <div style="font-size: 1.5rem; margin-bottom: 0.5rem; color: {'#22c55e' if completed_drills == 5 else styles['muted_color']};">{'✓' if completed_drills == 5 else '○'}</div>
-            <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem;">Cognitive Drills</div>
-            <div style="font-size: 2rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{completed_drills}/5</div>
-            <div style="color: {styles['muted_color']}; font-size: 0.875rem;">completed today</div>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.button("Open Drills", key="drills_btn", use_container_width=True):
-            st.session_state["page"] = "N-Back"
-            st.rerun()
-        if st.button("Drill Details", key="toggle_drills", use_container_width=True):
-            st.session_state.show_drills_details = not st.session_state.show_drills_details
-    
-    with col3:
-        other_checks = {
-            "writing": "✓" if completed["writing"] else "○",
-            "forecasts": "✓" if completed["forecasts"] else "○",
-            "mental_math": "✓" if completed["mental_math"] else "○",
-            "topic_study": "✓" if completed["topic_study"] else "○"
-        }
-        wm_checks = {
-            "world_model_a": "✓" if completed["world_model_a"] else "○",
-            "world_model_b": "✓" if completed["world_model_b"] else "○"
-        }
-        learning_completed = sum(1 for v in list(other_checks.values()) + list(wm_checks.values()) if v == "✓")
-        all_learning_complete = learning_completed == 6
-        st.markdown(f"""
-        <div style="
-            background: {styles['background']};
-            padding: 1.5rem;
-            border-radius: 16px;
-            border: {styles['border']};
-            box-shadow: {styles['shadow']};
-            text-align: center;
-        ">
-            <div style="font-size: 1.5rem; margin-bottom: 0.5rem; color: {'#22c55e' if all_learning_complete else styles['muted_color']};">{'✓' if all_learning_complete else '○'}</div>
-            <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem;">Learning</div>
-            <div style="font-size: 2rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{learning_completed}/6</div>
-            <div style="color: {styles['muted_color']}; font-size: 0.875rem;">activities done</div>
+            <div style="font-size: 1.25rem; margin-bottom: 0.5rem; color: {'#22c55e' if all_spaced_complete else styles['muted_color']};">{'✓' if all_spaced_complete else '○'}</div>
+            <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem; font-size: 1rem;">Spaced Learning</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{spaced_completed}/4</div>
+            <div style="color: {styles['muted_color']}; font-size: 0.8rem;">activities done</div>
         </div>
         """, unsafe_allow_html=True)
         
-        col_topic, col_world = st.columns(2)
-        with col_topic:
-            if st.button("Study Topic", key="topic_btn", use_container_width=True):
+        # Toggle dropdown
+        if st.button("View Activities", key="toggle_spaced", use_container_width=True):
+            st.session_state.show_spaced_details = not st.session_state.get("show_spaced_details", False)
+            st.rerun()
+        
+        # Dropdown content
+        if st.session_state.get("show_spaced_details", False):
+            st.markdown("**Spaced Learning Activities**")
+            
+            # Review (with cards due count)
+            dc = len(due_cards(S()))
+            status_icon = "✅" if completed.get("review", False) else "⭕"
+            if st.button(f"{status_icon} Spaced Review ({dc} cards)", key="spaced_review", use_container_width=True):
+                st.session_state["page"] = "Spaced Review"
+                st.rerun()
+            
+            # Topic Study
+            status_icon = "✅" if completed.get("topic_study", False) else "⭕"
+            if st.button(f"{status_icon} Topic Study", key="spaced_topic", use_container_width=True):
                 st.session_state["page"] = "Topic Study"
                 st.rerun()
-        with col_world:
-            if st.button("World Model", key="world_btn", use_container_width=True):
+            
+            # World Model A & B
+            status_icon = "✅" if completed.get("world_model_a", False) else "⭕"
+            if st.button(f"{status_icon} World Model A", key="spaced_wm_a", use_container_width=True):
                 st.session_state["page"] = "World Model"
                 st.rerun()
-        
-        if st.button("Learning Details", key="toggle_learning", use_container_width=True):
-            st.session_state.show_learning_details = not st.session_state.show_learning_details
+            
+            status_icon = "✅" if completed.get("world_model_b", False) else "⭕"
+            if st.button(f"{status_icon} World Model B", key="spaced_wm_b", use_container_width=True):
+                st.session_state["page"] = "World Model"
+                st.rerun()
 
-    # Initialize expandable sections state
-    if "show_review_details" not in st.session_state:
-        st.session_state.show_review_details = False
-    if "show_drills_details" not in st.session_state:
-        st.session_state.show_drills_details = False
-    if "show_learning_details" not in st.session_state:
-        st.session_state.show_learning_details = False
-
-    # Expandable details for each section
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.session_state.show_review_details:
-            due_cards_list = due_cards(S())
-            with st.expander("Spaced Review Tasks", expanded=True):
-                if due_cards_list:
-                    st.write(f"**{len(due_cards_list)} cards due for review:**")
-                    for i, card in enumerate(due_cards_list[:5]):  # Show first 5
-                        status = "Done" if completed["review"] else "Pending"
-                        card_text = card.get("front", "Unknown card")[:50]
-                        if len(card.get("front", "")) > 50:
-                            card_text += "..."
-                        if st.button(f"{status}: {card_text}", key=f"card_{i}", use_container_width=True):
-                            st.session_state["page"] = "Spaced Review"
-                            st.rerun()
-                    if len(due_cards_list) > 5:
-                        st.write(f"... and {len(due_cards_list) - 5} more cards")
-                        if st.button("View All Cards", key="view_all_cards", use_container_width=True):
-                            st.session_state["page"] = "Spaced Review"
-                            st.rerun()
-                else:
-                    st.write("No cards due for review today!")
-                    if st.button("Go to Spaced Review", key="go_spaced_review", use_container_width=True):
-                        st.session_state["page"] = "Spaced Review"
-                        st.rerun()
-                    
+    # Section 2: Cognitive Drills
     with col2:
-        if st.session_state.show_drills_details:
-            with st.expander("Cognitive Drill Tasks", expanded=True):
-                drill_tasks = {
-                    "nback": ("Dual N-Back", "N-Back"),
-                    "task_switching": ("Task Switching", "Task Switching"), 
-                    "complex_span": ("Complex Span", "Complex Span"),
-                    "gng": ("Go/No-Go", "Go/No-Go"),
-                    "processing_speed": ("Processing Speed", "Processing Speed")
-                }
-                for key, (name, page) in drill_tasks.items():
-                    status = "Done" if completed[key] else "Pending"
-                    if st.button(f"{status}: {name}", key=f"drill_{key}", use_container_width=True):
-                        st.session_state["page"] = page
-                        st.rerun()
-                    
+        drill_checks = {
+            "nback": completed.get("nback", False),
+            "task_switching": completed.get("task_switching", False), 
+            "complex_span": completed.get("complex_span", False),
+            "gng": completed.get("gng", False),
+            "processing_speed": completed.get("processing_speed", False)
+        }
+        completed_drills = sum(1 for v in drill_checks.values() if v)
+        
+        st.markdown(f"""
+        <div style="
+            background: {styles['background']};
+            padding: 1.25rem;
+            border-radius: 12px;
+            border: {styles['border']};
+            box-shadow: {styles['shadow']};
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-bottom: 0.75rem;
+            min-height: 140px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        ">
+            <div style="font-size: 1.25rem; margin-bottom: 0.5rem; color: {'#22c55e' if completed_drills == 5 else styles['muted_color']};">{'✓' if completed_drills == 5 else '○'}</div>
+            <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem; font-size: 1rem;">Cognitive Drills</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{completed_drills}/5</div>
+            <div style="color: {styles['muted_color']}; font-size: 0.8rem;">completed today</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("View Drills", key="toggle_drills", use_container_width=True):
+            st.session_state.show_drills_details = not st.session_state.get("show_drills_details", False)
+            st.rerun()
+        
+        if st.session_state.get("show_drills_details", False):
+            st.markdown("**Cognitive Drill Tasks**")
+            
+            drill_activities = [
+                ("Dual N-Back", "N-Back", "nback"),
+                ("Task Switching", "Task Switching", "task_switching"),
+                ("Complex Span", "Complex Span", "complex_span"),
+                ("Go/No-Go", "Go/No-Go", "gng"),
+                ("Processing Speed", "Processing Speed", "processing_speed")
+            ]
+            
+            for name, page, key in drill_activities:
+                status_icon = "✅" if completed.get(key, False) else "⭕"
+                if st.button(f"{status_icon} {name}", key=f"drill_{key}", use_container_width=True):
+                    st.session_state["page"] = page
+                    st.rerun()
+
+    # Section 3: Learning Plus (includes Mental Math, Writing, Forecasts, CRT, Base Rate, Anchoring)
     with col3:
-        if st.session_state.show_learning_details:
-            with st.expander("Learning Activities", expanded=True):
-                learning_tasks = {
-                    "topic_study": ("Topic Study", "Topic Study"),
-                    "writing": ("Writing Exercise", "Writing"),
-                    "forecasts": ("Forecasting", "Forecasts"),
-                    "mental_math": ("Mental Math", "Mental Math"),
-                    "crt": ("Cognitive Reflection", "CRT"),
-                    "base_rate": ("Base Rate Training", "Base Rate"),
-                    "anchoring": ("Anchoring Resistance", "Anchoring"),
-                    "world_model_a": ("World Model A", "World Model"),
-                    "world_model_b": ("World Model B", "World Model")
-                }
-                for key, (name, page) in learning_tasks.items():
-                    status = "Done" if completed[key] else "Pending"
-                    if st.button(f"{status}: {name}", key=f"learning_{key}", use_container_width=True):
-                        st.session_state["page"] = page
-                        st.rerun()
+        additional_checks = {
+            "writing": completed.get("writing", False),
+            "forecasts": completed.get("forecasts", False),
+            "mental_math": completed.get("mental_math", False),
+            "crt": completed.get("crt", False),
+            "base_rate": completed.get("base_rate", False),
+            "anchoring": completed.get("anchoring", False)
+        }
+        additional_completed = sum(1 for v in additional_checks.values() if v)
+        all_additional_complete = additional_completed == 6
+        
+        st.markdown(f"""
+        <div style="
+            background: {styles['background']};
+            padding: 1.25rem;
+            border-radius: 12px;
+            border: {styles['border']};
+            box-shadow: {styles['shadow']};
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-bottom: 0.75rem;
+            min-height: 140px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        ">
+            <div style="font-size: 1.25rem; margin-bottom: 0.5rem; color: {'#22c55e' if all_additional_complete else styles['muted_color']};">{'✓' if all_additional_complete else '○'}</div>
+            <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem; font-size: 1rem;">Learning Plus</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{additional_completed}/6</div>
+            <div style="color: {styles['muted_color']}; font-size: 0.8rem;">activities done</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("View Activities", key="toggle_additional", use_container_width=True):
+            st.session_state.show_additional_details = not st.session_state.get("show_additional_details", False)
+            st.rerun()
+        
+        if st.session_state.get("show_additional_details", False):
+            st.markdown("**Learning Plus Activities**")
+            
+            additional_activities = [
+                ("Writing Exercise", "Writing", "writing"),
+                ("Forecasting", "Forecasts", "forecasts"),
+                ("Mental Math", "Mental Math", "mental_math"),
+                ("Cognitive Reflection", "CRT", "crt"),
+                ("Base Rate Training", "Base Rate", "base_rate"),
+                ("Anchoring Resistance", "Anchoring", "anchoring")
+            ]
+            
+            for name, page, key in additional_activities:
+                status_icon = "✅" if completed.get(key, False) else "⭕"
+                if st.button(f"{status_icon} {name}", key=f"additional_{key}", use_container_width=True):
+                    st.session_state["page"] = page
+                    st.rerun()
+
+    # Section 4: Healthy Baseline
+    with col4:
+        baseline_activities = ["reading", "meditation", "exercise", "sleep_quality", "hydration", "social_engagement", "nutrition", "sunlight"]
+        baseline_completed = sum(1 for activity in baseline_activities if completed.get(activity, False))
+        all_baseline_complete = baseline_completed == len(baseline_activities)
+        
+        st.markdown(f"""
+        <div style="
+            background: {styles['background']};
+            padding: 1.25rem;
+            border-radius: 12px;
+            border: {styles['border']};
+            box-shadow: {styles['shadow']};
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-bottom: 0.75rem;
+            min-height: 140px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        ">
+            <div style="font-size: 1.25rem; margin-bottom: 0.5rem; color: {'#22c55e' if all_baseline_complete else styles['muted_color']};">{'✓' if all_baseline_complete else '○'}</div>
+            <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem; font-size: 1rem;">Healthy Baseline</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{baseline_completed}/{len(baseline_activities)}</div>
+            <div style="color: {styles['muted_color']}; font-size: 0.8rem;">activities done</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("View Activities", key="toggle_baseline", use_container_width=True):
+            st.session_state.show_baseline_details = not st.session_state.get("show_baseline_details", False)
+            st.rerun()
+        
+        if st.session_state.get("show_baseline_details", False):
+            if st.button("Go to Healthy Baseline", key="baseline_page", use_container_width=True):
+                st.session_state["page"] = "Healthy Baseline"
+                st.rerun()
 
     # Clean reset button
+    st.markdown("---")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("Reset Daily Progress", key="reset_progress", use_container_width=True):
@@ -1717,7 +1866,8 @@ def page_dashboard():
             st.success("Daily progress reset!")
             st.rerun()
 
-    st.markdown("### Adaptive Suggestions (targeting 80-85% accuracy)")
+    # Adaptive Suggestions
+    st.markdown("### Adaptive Suggestions")
     nb_idx = adaptive_suggest_index("nback")
     ts_idx = adaptive_suggest_index("stroop")  # Reuse for task switching
     cspan_idx = adaptive_suggest_index("complex_span")
@@ -1729,9 +1879,6 @@ def page_dashboard():
         nb_feedback = get_performance_feedback("nback")
         if nb_feedback:
             st.caption(nb_feedback)
-        nb_suggestion = suggest_difficulty_adjustment("nback")
-        if nb_suggestion:
-            st.info(nb_suggestion)
             
         st.write(f"**Complex Span** → Set size={CSPAN_GRID[cspan_idx]}")
         cs_feedback = get_performance_feedback("complex_span")
@@ -1739,45 +1886,53 @@ def page_dashboard():
             st.caption(cs_feedback)
     
     with col_b:
-        st.write(f"**Task Switching** → Response time={STROOP_GRID[ts_idx]}ms")
-        ts_feedback = get_performance_feedback("stroop")  # Reuse stroop feedback
+        st.write(f"**Task Switching** → ISI={STROOP_GRID[ts_idx]}ms")
+        ts_feedback = get_performance_feedback("stroop")
         if ts_feedback:
             st.caption(ts_feedback)
             
-        st.write(f"**Go/No-Go** → ISI={GNG_GRID[gng_idx]}ms")
+        st.write(f"**Go/No-Go** → %NoGo={GNG_GRID[gng_idx]}")
         gng_feedback = get_performance_feedback("gng")
         if gng_feedback:
             st.caption(gng_feedback)
 
-    # Progress
-    st.markdown("### Overall Progress")
-    learned = len([c for c in S()["cards"] if not c.get("new")])
-    total = len(S()["cards"])
-    st.write(f"Cards learned: **{learned}/{total}**")
-    if S()["nbackHistory"]:
-        recent_nb = S()["nbackHistory"][-5:]
-        nb_scores = [h.get('composite_acc', h.get('acc', 0)) for h in recent_nb]
-        st.write("Dual N-Back recent acc:",
-                 ", ".join(f"{score:.1f}%" for score in nb_scores))
-    if S()["stroopHistory"]:
-        recent_ts = [h for h in S()["stroopHistory"][-5:] if h.get('type') == 'task_switching']
-        if recent_ts:
-            st.write("Task Switching recent acc:",
-                     ", ".join(f"{h['acc']}%" for h in recent_ts))
-    
-    # Today's Topic Preview
+    # Enhanced Topic Selection
     if not is_completed_today("topic_study"):
         st.markdown("### Today's Suggested Topic")
-        topic = get_daily_topic_suggestion()
-        difficulty_symbols = {"easy": "●", "medium": "●", "hard": "●"}
         
-        with st.container(border=True):
+        # Category selection for topic study
+        topic_categories = [
+            "Psychology", "Neuroscience", "Philosophy", "History", 
+            "Mathematics", "Physics", "Biology", "Computer Science",
+            "Economics", "Literature"
+        ]
+        
+        selected_category = st.selectbox(
+            "Choose a category for today's study topic:",
+            topic_categories,
+            index=0,
+            key="topic_category_select"
+        )
+        
+        if st.button("Generate Topic for Selected Category", key="generate_topic"):
+            # Generate topic based on selected category
+            topic = generate_category_topic(selected_category)
+            st.session_state["selected_topic"] = topic
+            st.rerun()
+        
+        # Display selected or default topic
+        if "selected_topic" in st.session_state:
+            topic = st.session_state["selected_topic"]
+        else:
+            topic = get_daily_topic_suggestion()
+        
+        with st.container():
             col_topic, col_button = st.columns([3, 1])
             with col_topic:
-                st.markdown(f"**{topic['title']}** {difficulty_symbols.get(topic['difficulty'], '●')}")
+                st.markdown(f"**{topic['title']}**")
                 st.caption(topic['description'])
             with col_button:
-                if st.button("Start Study"):
+                if st.button("Start Study", key="start_study_btn"):
                     st.session_state["page"] = "Topic Study"
                     st.rerun()
     
@@ -4568,14 +4723,13 @@ PAGES = [
     "Complex Span",
     "Go/No-Go",
     "Processing Speed",
-    "KAHNEMAN TRAINING",
-    "CRT",
-    "Base Rate",
-    "Anchoring",
-    "ADDITIONAL TRAINING",
+    "ADDITIONAL LEARNING",
     "Mental Math",
     "Writing",
     "Forecasts",
+    "CRT",
+    "Base Rate",
+    "Anchoring",
     "Argument Map",
     "SETTINGS",
     "Settings",
@@ -4583,7 +4737,7 @@ PAGES = [
 
 st.set_page_config(
     page_title="Max Mind Trainer", 
-    page_icon="M", 
+    page_icon="MaxMindLogo.png", 
     layout="centered",
     initial_sidebar_state="auto"
 )
@@ -4752,6 +4906,30 @@ def apply_theme_styling():
                     padding: 0.5rem !important;
                     font-size: 0.9rem !important;
                 }
+            }
+            
+            /* Compact Navigation Styling */
+            .css-1d391kg .stRadio label {
+                padding: 0.4rem 0.8rem !important;
+                margin-bottom: 0.3rem !important;
+                font-size: 0.95rem !important;
+                border-radius: 8px !important;
+                transition: all 0.2s ease !important;
+            }
+            
+            .css-1d391kg .stRadio label:hover {
+                background-color: rgba(255, 255, 255, 0.1) !important;
+                transform: translateX(2px) !important;
+            }
+            
+            /* Compact spacing between navigation sections */
+            .css-1d391kg > div {
+                margin-bottom: 0.8rem !important;
+            }
+            
+            /* Tighter spacing for navigation items */
+            .css-1d391kg [data-testid="stRadio"] > div {
+                gap: 0.2rem !important;
             }
         </style>
         """, unsafe_allow_html=True)
@@ -5006,6 +5184,30 @@ def apply_theme_styling():
                     padding: 0.5rem !important;
                     font-size: 0.9rem !important;
                 }
+            }
+            
+            /* Compact Navigation Styling for Dark Mode */
+            .css-1d391kg .stRadio label {
+                padding: 0.4rem 0.8rem !important;
+                margin-bottom: 0.3rem !important;
+                font-size: 0.95rem !important;
+                border-radius: 8px !important;
+                transition: all 0.2s ease !important;
+            }
+            
+            .css-1d391kg .stRadio label:hover {
+                background-color: rgba(88, 166, 255, 0.15) !important;
+                transform: translateX(2px) !important;
+            }
+            
+            /* Compact spacing between navigation sections */
+            .css-1d391kg > div {
+                margin-bottom: 0.8rem !important;
+            }
+            
+            /* Tighter spacing for navigation items */
+            .css-1d391kg [data-testid="stRadio"] > div {
+                gap: 0.2rem !important;
             }
         </style>
         """, unsafe_allow_html=True)
@@ -5300,6 +5502,30 @@ def apply_theme_styling():
                     margin-bottom: 0.5rem !important;
                 }
             }
+            
+            /* Compact Navigation Styling for Light Mode */
+            .css-1d391kg .stRadio label {
+                padding: 0.4rem 0.8rem !important;
+                margin-bottom: 0.3rem !important;
+                font-size: 0.95rem !important;
+                border-radius: 8px !important;
+                transition: all 0.2s ease !important;
+            }
+            
+            .css-1d391kg .stRadio label:hover {
+                background-color: rgba(0, 122, 255, 0.1) !important;
+                transform: translateX(2px) !important;
+            }
+            
+            /* Compact spacing between navigation sections */
+            .css-1d391kg > div {
+                margin-bottom: 0.8rem !important;
+            }
+            
+            /* Tighter spacing for navigation items */
+            .css-1d391kg [data-testid="stRadio"] > div {
+                gap: 0.2rem !important;
+            }
         </style>
         """, unsafe_allow_html=True)
 
@@ -5340,6 +5566,8 @@ def get_card_styles():
         }
 
 with st.sidebar:
+    # Add logo at the top
+    st.image("MaxMindLogo.png", width=120)
     st.markdown("# MaxMind")
     st.markdown("*Enhanced Cognitive Training*")
     st.markdown("---")
