@@ -194,6 +194,189 @@ def record_session_performance(activity: str, score: int, total: int, time_secon
     
     return adjustment
 
+# ========== AI Topic Generation System ==========
+def generate_intelligent_topic(domain: str = None, difficulty_level: int = 1):
+    """Generate educational topics based on domain and difficulty"""
+    
+    # Knowledge domain topic pools organized by difficulty
+    topic_pools = {
+        "philosophy": {
+            1: ["Socratic Method", "Stoicism basics", "Plato's Cave Allegory", "Aristotelian Ethics", "Free Will vs Determinism"],
+            2: ["Existentialism", "Phenomenology", "Virtue Ethics", "Deontological Ethics", "Philosophy of Mind"],
+            3: ["Logical Positivism", "Post-Structuralism", "Modal Logic", "Philosophy of Language", "Metaphysics of Time"]
+        },
+        "history": {
+            1: ["Industrial Revolution", "Enlightenment Era", "Renaissance", "Ancient Greek Democracy", "Roman Empire"],
+            2: ["Scientific Revolution", "Age of Exploration", "French Revolution", "American Civil War", "World War I"],
+            3: ["Weimar Republic", "Decolonization", "Cold War Dynamics", "Medieval Scholasticism", "Byzantine Empire"]
+        },
+        "neuroscience": {
+            1: ["Neuroplasticity", "Dopamine and Motivation", "Memory Formation", "Sleep and Brain Health", "Stress Response"],
+            2: ["Prefrontal Cortex Function", "Neurotransmitter Systems", "Cognitive Load Theory", "Working Memory", "Attention Networks"],
+            3: ["Default Mode Network", "Hemispheric Specialization", "Synaptic Plasticity", "Neurogenesis", "Glial Cell Function"]
+        },
+        "psychology": {
+            1: ["Cognitive Biases", "Classical Conditioning", "Growth Mindset", "Maslow's Hierarchy", "Social Psychology"],
+            2: ["Dual Process Theory", "Flow State", "Intrinsic Motivation", "Attachment Theory", "Cognitive Dissonance"],
+            3: ["Terror Management Theory", "Social Identity Theory", "Prospect Theory", "Embodied Cognition", "Theory of Mind"]
+        },
+        "economics": {
+            1: ["Supply and Demand", "Opportunity Cost", "Market Failures", "Behavioral Economics", "Public Goods"],
+            2: ["Game Theory", "Information Asymmetry", "Network Effects", "Prisoner's Dilemma", "Tragedy of Commons"],
+            3: ["Mechanism Design", "Principal-Agent Problems", "Auction Theory", "Monetary Policy", "Economic Cycles"]
+        },
+        "political_science": {
+            1: ["Democracy vs Autocracy", "Separation of Powers", "Civil Liberties", "Political Participation", "Federalism"],
+            2: ["Public Choice Theory", "Electoral Systems", "Interest Groups", "Political Culture", "Comparative Politics"],
+            3: ["Institutional Design", "Democratic Transitions", "International Relations", "Political Economy", "Governance Theory"]
+        },
+        "cognitive_science": {
+            1: ["System 1 vs System 2", "Heuristics and Biases", "Mental Models", "Cognitive Load", "Pattern Recognition"],
+            2: ["Metacognition", "Transfer Learning", "Expertise Development", "Analogical Reasoning", "Conceptual Change"],
+            3: ["Embodied Cognition", "Extended Mind", "Cognitive Architectures", "Computational Models", "Consciousness"]
+        },
+        "systems_thinking": {
+            1: ["Feedback Loops", "Emergence", "Leverage Points", "Systems Archetypes", "Stocks and Flows"],
+            2: ["Complex Adaptive Systems", "Network Effects", "Phase Transitions", "Resilience", "Path Dependence"],
+            3: ["Autopoiesis", "Cybernetics", "Chaos Theory", "Self-Organization", "Complexity Science"]
+        },
+        "decision_theory": {
+            1: ["Expected Value", "Sunk Cost Fallacy", "Base Rate Neglect", "Anchoring Bias", "Confirmation Bias"],
+            2: ["Bayesian Reasoning", "Multi-Criteria Decision", "Risk Assessment", "Utility Theory", "Decision Trees"],
+            3: ["Prospect Theory", "Ambiguity Aversion", "Dynamic Inconsistency", "Social Choice Theory", "Mechanism Design"]
+        },
+        "epistemology": {
+            1: ["Scientific Method", "Falsifiability", "Induction vs Deduction", "Knowledge vs Belief", "Empiricism vs Rationalism"],
+            2: ["Paradigm Shifts", "Theory-Ladenness", "Underdetermination", "Realism vs Anti-realism", "Social Construction"],
+            3: ["Gettier Problems", "Externalism", "Reliabilism", "Foundationalism", "Coherentism"]
+        }
+    }
+    
+    # Select domain
+    if not domain:
+        domain = random.choice(list(topic_pools.keys()))
+    
+    # Get user's current level in this domain
+    user_level = S().get("topic_suggestions", {}).get("knowledge_domains", {}).get(domain, {}).get("level", 1)
+    effective_level = min(3, max(1, user_level))
+    
+    # Get topic pool for this level
+    available_topics = topic_pools.get(domain, {}).get(effective_level, ["General Knowledge"])
+    
+    # Avoid recent topics
+    recent_topics = S().get("topic_suggestions", {}).get("knowledge_domains", {}).get(domain, {}).get("recent_topics", [])
+    fresh_topics = [t for t in available_topics if t not in recent_topics]
+    
+    if not fresh_topics:
+        fresh_topics = available_topics  # Reset if all topics used
+    
+    selected_topic = random.choice(fresh_topics)
+    
+    return {
+        "topic": selected_topic,
+        "domain": domain,
+        "level": effective_level,
+        "description": f"Explore {selected_topic} in the context of {domain.replace('_', ' ').title()}",
+        "suggested_duration": "15-20 minutes",
+        "learning_objective": f"Understand key concepts and applications of {selected_topic}"
+    }
+
+def update_topic_progress(domain: str, topic: str, mastered: bool = False):
+    """Update progress in knowledge domains"""
+    if "topic_suggestions" not in S():
+        S()["topic_suggestions"] = {"knowledge_domains": {}}
+    
+    if "knowledge_domains" not in S()["topic_suggestions"]:
+        S()["topic_suggestions"]["knowledge_domains"] = {}
+    
+    if domain not in S()["topic_suggestions"]["knowledge_domains"]:
+        S()["topic_suggestions"]["knowledge_domains"][domain] = {"level": 1, "recent_topics": []}
+    
+    domain_data = S()["topic_suggestions"]["knowledge_domains"][domain]
+    
+    # Add to recent topics
+    if topic not in domain_data["recent_topics"]:
+        domain_data["recent_topics"].append(topic)
+    
+    # Keep only last 5 recent topics per domain
+    if len(domain_data["recent_topics"]) > 5:
+        domain_data["recent_topics"] = domain_data["recent_topics"][-5:]
+    
+    # Level up if mastered (every 3 mastered topics in a domain)
+    if mastered:
+        if "mastered_count" not in domain_data:
+            domain_data["mastered_count"] = 0
+        domain_data["mastered_count"] += 1
+        
+        if domain_data["mastered_count"] % 3 == 0 and domain_data["level"] < 3:
+            domain_data["level"] += 1
+            return f"🎓 Leveled up in {domain.replace('_', ' ').title()}! Now at Level {domain_data['level']}"
+    
+    return None
+
+# ========== Healthy Baseline System ==========
+def get_healthy_baseline_status():
+    """Get completion status for healthy baseline activities"""
+    if "healthy_baseline" not in S():
+        return {}
+    
+    # Reset if new day
+    if S()["healthy_baseline"]["last_reset"] != today_iso():
+        reset_healthy_baseline()
+    
+    return S()["healthy_baseline"]["completed"]
+
+def mark_healthy_baseline_completed(activity: str):
+    """Mark a healthy baseline activity as completed"""
+    if "healthy_baseline" not in S():
+        S()["healthy_baseline"] = {
+            "last_reset": today_iso(),
+            "completed": {},
+            "streaks": {},
+            "daily_history": {}
+        }
+    
+    S()["healthy_baseline"]["completed"][activity] = True
+    
+    # Update streak
+    if activity not in S()["healthy_baseline"]["streaks"]:
+        S()["healthy_baseline"]["streaks"][activity] = 0
+    S()["healthy_baseline"]["streaks"][activity] += 1
+    
+    save_state()
+
+def reset_healthy_baseline():
+    """Reset healthy baseline for new day"""
+    if "healthy_baseline" not in S():
+        return
+    
+    # Save yesterday's completion to history
+    yesterday_completed = S()["healthy_baseline"]["completed"].copy()
+    yesterday_date = S()["healthy_baseline"]["last_reset"]
+    
+    S()["healthy_baseline"]["daily_history"][yesterday_date] = yesterday_completed
+    
+    # Reset all completions for today
+    for activity in S()["healthy_baseline"]["completed"]:
+        if not S()["healthy_baseline"]["completed"][activity]:
+            # Streak broken
+            S()["healthy_baseline"]["streaks"][activity] = 0
+    
+    # Reset completions
+    S()["healthy_baseline"]["completed"] = {
+        "meditation": False,
+        "sleep_quality": False,
+        "nutrition": False,
+        "exercise": False,
+        "social_engagement": False,
+        "hydration": False,
+        "sunlight": False,
+        "reading": False
+    }
+    
+    S()["healthy_baseline"]["last_reset"] = today_iso()
+    save_state()
+
 # ========== Data model ==========
 @dataclass
 class Card:
@@ -344,7 +527,44 @@ DEFAULT_STATE: Dict[str, Any] = {
         "study_history": [],  # Track what's been studied
         "mastered_topics": [],  # Topics that have been integrated into World Model
         "suggestion_queue": [],  # Pre-generated suggestions
-        "last_suggestion_date": None
+        "last_suggestion_date": None,
+        "knowledge_domains": {
+            "philosophy": {"level": 1, "recent_topics": []},
+            "history": {"level": 1, "recent_topics": []},
+            "neuroscience": {"level": 1, "recent_topics": []},
+            "psychology": {"level": 1, "recent_topics": []},
+            "economics": {"level": 1, "recent_topics": []},
+            "political_science": {"level": 1, "recent_topics": []},
+            "cognitive_science": {"level": 1, "recent_topics": []},
+            "systems_thinking": {"level": 1, "recent_topics": []},
+            "decision_theory": {"level": 1, "recent_topics": []},
+            "epistemology": {"level": 1, "recent_topics": []}
+        }
+    },
+    # NEW: Healthy Baseline Tracking
+    "healthy_baseline": {
+        "last_reset": today_iso(),
+        "completed": {
+            "meditation": False,
+            "sleep_quality": False,
+            "nutrition": False,
+            "exercise": False,
+            "social_engagement": False,
+            "hydration": False,
+            "sunlight": False,
+            "reading": False
+        },
+        "streaks": {
+            "meditation": 0,
+            "sleep_quality": 0,
+            "nutrition": 0,
+            "exercise": 0,
+            "social_engagement": 0,
+            "hydration": 0,
+            "sunlight": 0,
+            "reading": 0
+        },
+        "daily_history": {}
     },
     # NEW: World-Model Learning system
     "world_model": {
@@ -1072,9 +1292,19 @@ def get_topics_for_world_model_integration() -> List[Dict[str, Any]]:
     return integration_candidates
 
 def get_completion_status() -> Dict[str, bool]:
-    """Get completion status for all activities"""
+    """Get completion status for all activities including healthy baseline"""
     check_daily_reset()
-    return S()["daily"]["completed"].copy()
+    
+    # Get cognitive training completion status
+    cognitive_completed = S()["daily"]["completed"].copy()
+    
+    # Get healthy baseline completion status
+    baseline_completed = get_healthy_baseline_status()
+    
+    # Combine both for total daily progress
+    all_completed = {**cognitive_completed, **baseline_completed}
+    
+    return all_completed
 
 def generate_60_day_calendar():
     """Generate a 60-day forward-looking calendar with completion tracking"""
@@ -1152,36 +1382,68 @@ def render_calendar_grid():
                     if day["completion"]:
                         percentage = day["completion"]["percentage"]
                         if percentage == 100:
-                            emoji = "●"
-                            color = "green"
+                            emoji = "🏆"
+                            color = "#FFD700"  # Gold
+                            border_color = "#FFA500"
+                            text_color = "#000000"
                         elif percentage >= 80:
                             emoji = "●"
-                            color = "orange"
+                            color = "#22c55e"  # Green
+                            border_color = "#16a34a"
+                            text_color = "#ffffff"
                         elif percentage >= 50:
                             emoji = "●"
-                            color = "orange"
+                            color = "#f59e0b"  # Orange
+                            border_color = "#d97706"
+                            text_color = "#ffffff"
                         else:
                             emoji = "●"
-                            color = "red"
-                        display_text = f"{emoji}\n{day_name} {day_num}\n{percentage}%"
+                            color = "#ef4444"  # Red
+                            border_color = "#dc2626"
+                            text_color = "#ffffff"
+                        display_text = f"{emoji}<br>{day_name} {day_num}<br><b>{percentage}%</b>"
                     elif day["is_today"]:
                         emoji = "●"
-                        color = "blue"
-                        display_text = f"{emoji}\n{day_name} {day_num}\nTODAY"
+                        color = "#3b82f6"  # Blue
+                        border_color = "#2563eb"
+                        text_color = "#ffffff"
+                        display_text = f"{emoji}<br>{day_name} {day_num}<br><b>TODAY</b>"
                     elif day["is_future"]:
                         emoji = "○"
-                        color = "gray"
-                        display_text = f"{emoji}\n{day_name} {day_num}\n—"
+                        color = "#6b7280"  # Gray
+                        border_color = "#4b5563"
+                        text_color = "#ffffff"
+                        display_text = f"{emoji}<br>{day_name} {day_num}<br>—"
                     else:
                         emoji = "○"
-                        color = "gray"
-                        display_text = f"{emoji}\n{day_name} {day_num}\nMissed"
+                        color = "#6b7280"  # Gray
+                        border_color = "#4b5563"
+                        text_color = "#ffffff"
+                        display_text = f"{emoji}<br>{day_name} {day_num}<br>Missed"
                     
-                    # Create a button-like display
+                    # Create a button-like display with gold styling for perfect days
+                    shadow = "0 0 15px rgba(255, 215, 0, 0.6)" if (day["completion"] and day["completion"]["percentage"] == 100) else "0 2px 4px rgba(0,0,0,0.1)"
+                    
                     st.markdown(
-                        f"<div style='text-align: center; padding: 5px; margin: 2px; border: 1px solid #ddd; border-radius: 5px; font-size: 10px; height: 60px; display: flex; flex-direction: column; justify-content: center;'>"
-                        f"{display_text}"
-                        f"</div>",
+                        f"""<div style='
+                            text-align: center; 
+                            padding: 8px; 
+                            margin: 2px; 
+                            background: {color}; 
+                            border: 2px solid {border_color}; 
+                            border-radius: 8px; 
+                            font-size: 10px; 
+                            height: 65px; 
+                            display: flex; 
+                            flex-direction: column; 
+                            justify-content: center;
+                            color: {text_color};
+                            font-weight: bold;
+                            box-shadow: {shadow};
+                            transition: all 0.3s ease;
+                        '>
+                        {display_text}
+                        </div>""",
                         unsafe_allow_html=True
                     )
     
@@ -1222,7 +1484,17 @@ def page_dashboard():
     progress_pct = int((completed_count / total_activities) * 100)
     
     styles = get_card_styles()
-    progress_gradient = "linear-gradient(90deg, #58a6ff 0%, #238636 100%)" if S().get("settings", {}).get("darkMode", False) else "linear-gradient(90deg, #007aff 0%, #00d4ff 100%)"
+    
+    # Gold gradient for 100% completion, regular gradient otherwise
+    if progress_pct == 100:
+        progress_gradient = "linear-gradient(90deg, #FFD700 0%, #FFA500 50%, #FFD700 100%)"
+        progress_text_color = "#000000"
+        progress_celebration = "🏆 PERFECT DAY! 🏆"
+    else:
+        progress_gradient = "linear-gradient(90deg, #58a6ff 0%, #238636 100%)" if S().get("settings", {}).get("darkMode", False) else "linear-gradient(90deg, #007aff 0%, #00d4ff 100%)"
+        progress_text_color = styles['text_color']
+        progress_celebration = "Today's Progress"
+    
     background_bar = "#21262d" if S().get("settings", {}).get("darkMode", False) else "#f1f5f9"
     
     st.markdown(f"""
@@ -1235,7 +1507,7 @@ def page_dashboard():
         margin-bottom: 2rem;
     ">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <div style="font-weight: 600; color: {styles['text_color']};">Today's Progress</div>
+            <div style="font-weight: 600; color: {progress_text_color};">{progress_celebration}</div>
             <div style="font-size: 1.5rem; font-weight: 700; color: {styles['accent_color']};">{completed_count}/{total_activities}</div>
         </div>
         <div style="
@@ -1251,9 +1523,10 @@ def page_dashboard():
                 width: {progress_pct}%;
                 border-radius: 12px;
                 transition: width 0.3s ease;
+                box-shadow: {'0 0 10px rgba(255, 215, 0, 0.5)' if progress_pct == 100 else 'none'};
             "></div>
         </div>
-        <div style="color: {styles['muted_color']}; font-size: 0.875rem; text-align: center;">{progress_pct}% Complete</div>
+        <div style="color: {progress_text_color}; font-size: 0.875rem; text-align: center; font-weight: {'bold' if progress_pct == 100 else 'normal'};">{progress_pct}% Complete</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -3020,6 +3293,80 @@ def page_world_model():
     page_header("World-Model Learning")
     st.caption("Building a rigorous map of reality through micro-lessons → active recall → spaced repetition")
     
+    # AI Topic Suggestions Section
+    st.markdown("### 🤖 AI-Curated Learning Topics")
+    
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        # Generate daily topic suggestion
+        suggested_topic = generate_intelligent_topic()
+        
+        with st.container(border=True):
+            st.markdown(f"**Today's Recommended Topic: {suggested_topic['topic']}**")
+            st.markdown(f"*Domain: {suggested_topic['domain'].replace('_', ' ').title()}* | *Level {suggested_topic['level']}*")
+            st.info(suggested_topic['description'])
+            st.caption(f"⏱️ {suggested_topic['suggested_duration']} | 🎯 {suggested_topic['learning_objective']}")
+            
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                if st.button("📚 Study This Topic", key="study_suggested"):
+                    update_topic_progress(suggested_topic['domain'], suggested_topic['topic'])
+                    st.success(f"Started studying: {suggested_topic['topic']}")
+                    st.rerun()
+            
+            with col_b:
+                if st.button("✅ Mastered", key="master_suggested"):
+                    level_up_msg = update_topic_progress(suggested_topic['domain'], suggested_topic['topic'], mastered=True)
+                    if level_up_msg:
+                        st.success(level_up_msg)
+                    else:
+                        st.success("Topic mastered!")
+                    st.rerun()
+            
+            with col_c:
+                if st.button("🔄 New Topic", key="new_topic"):
+                    # Generate a different topic
+                    st.rerun()
+    
+    with col2:
+        # Domain selector for targeted learning
+        st.markdown("**Focus Learning:**")
+        domains = list(S().get("topic_suggestions", {}).get("knowledge_domains", {}).keys())
+        if not domains:
+            domains = ["philosophy", "neuroscience", "psychology", "economics"]
+        
+        selected_domain = st.selectbox("Choose Domain:", 
+                                     ["Random"] + [d.replace('_', ' ').title() for d in domains])
+        
+        if st.button("Generate Topic", key="generate_domain_topic"):
+            if selected_domain == "Random":
+                new_topic = generate_intelligent_topic()
+            else:
+                domain_key = selected_domain.lower().replace(' ', '_')
+                new_topic = generate_intelligent_topic(domain_key)
+            
+            st.info(f"**{new_topic['topic']}** ({new_topic['domain'].replace('_', ' ').title()})")
+    
+    # Show knowledge domain levels
+    if "topic_suggestions" in S() and "knowledge_domains" in S()["topic_suggestions"]:
+        st.markdown("### 📊 Knowledge Domain Progress")
+        domains_data = S()["topic_suggestions"]["knowledge_domains"]
+        
+        domain_cols = st.columns(3)
+        for i, (domain, data) in enumerate(domains_data.items()):
+            with domain_cols[i % 3]:
+                level = data.get("level", 1)
+                mastered_count = data.get("mastered_count", 0)
+                progress_stars = "⭐" * level + "☆" * (3 - level)
+                st.metric(
+                    domain.replace('_', ' ').title(),
+                    f"Level {level}",
+                    f"{mastered_count} mastered"
+                )
+                st.caption(progress_stars)
+    
+    st.markdown("---")
+    
     # Track selection and progress
     wm_state = S()["world_model"]
     current_tracks = wm_state["current_tracks"]
@@ -3907,6 +4254,151 @@ def page_anchoring():
     st.markdown("---")
     st.caption("**Research Evidence**: Anchoring is one of the most robust cognitive biases, discovered by Tversky & Kahneman (1974). Training in anchoring awareness can reduce susceptibility to this bias in negotiation and decision-making contexts (Strack & Mussweiler, 1997; Epley & Gilovich, 2006).")
 
+# ----- Healthy Baseline -----
+def page_healthy_baseline():
+    page_header("Healthy Baseline")
+    st.caption("Essential habits for optimal cognitive function and mental performance")
+    
+    # Get current status
+    baseline_status = get_healthy_baseline_status()
+    
+    # Calculate completion stats
+    total_activities = 8
+    completed_count = sum(baseline_status.values())
+    completion_percentage = completed_count / total_activities
+    
+    # Progress bar with gold color for 100%
+    if completion_percentage == 1.0:
+        st.markdown("""
+        <div style="background: linear-gradient(90deg, gold, #FFD700); padding: 10px; border-radius: 8px; text-align: center; color: black; font-weight: bold; margin-bottom: 20px;">
+        🏆 PERFECT DAY! All healthy baseline activities completed! 🏆
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.progress(completion_percentage, text=f"Daily Progress: {completed_count}/{total_activities} activities")
+    
+    # Activity sections
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🧘 Mind & Mental Health")
+        
+        # Meditation
+        if not baseline_status.get("meditation", False):
+            if st.button("✅ Meditation (10+ min)", key="meditation_btn", use_container_width=True):
+                mark_healthy_baseline_completed("meditation")
+                st.success("Meditation logged! 🧘‍♀️")
+                st.rerun()
+        else:
+            st.success("✅ Meditation completed")
+        
+        # Sleep Quality
+        if not baseline_status.get("sleep_quality", False):
+            if st.button("✅ Quality Sleep (7-9 hrs)", key="sleep_btn", use_container_width=True):
+                mark_healthy_baseline_completed("sleep_quality")
+                st.success("Sleep quality logged! 😴")
+                st.rerun()
+        else:
+            st.success("✅ Quality Sleep completed")
+        
+        # Social Engagement
+        if not baseline_status.get("social_engagement", False):
+            if st.button("✅ Social Connection", key="social_btn", use_container_width=True):
+                mark_healthy_baseline_completed("social_engagement")
+                st.success("Social engagement logged! 👥")
+                st.rerun()
+        else:
+            st.success("✅ Social Connection completed")
+        
+        # Reading
+        if not baseline_status.get("reading", False):
+            if st.button("✅ Reading (20+ min)", key="reading_btn", use_container_width=True):
+                mark_healthy_baseline_completed("reading")
+                st.success("Reading logged! 📚")
+                st.rerun()
+        else:
+            st.success("✅ Reading completed")
+    
+    with col2:
+        st.markdown("### 💪 Physical Health")
+        
+        # Exercise
+        if not baseline_status.get("exercise", False):
+            if st.button("✅ Exercise (30+ min)", key="exercise_btn", use_container_width=True):
+                mark_healthy_baseline_completed("exercise")
+                st.success("Exercise logged! 💪")
+                st.rerun()
+        else:
+            st.success("✅ Exercise completed")
+        
+        # Nutrition
+        if not baseline_status.get("nutrition", False):
+            if st.button("✅ Brain-Healthy Nutrition", key="nutrition_btn", use_container_width=True):
+                mark_healthy_baseline_completed("nutrition")
+                st.success("Nutrition logged! 🥗")
+                st.rerun()
+        else:
+            st.success("✅ Brain-Healthy Nutrition completed")
+        
+        # Hydration
+        if not baseline_status.get("hydration", False):
+            if st.button("✅ Adequate Hydration", key="hydration_btn", use_container_width=True):
+                mark_healthy_baseline_completed("hydration")
+                st.success("Hydration logged! 💧")
+                st.rerun()
+        else:
+            st.success("✅ Adequate Hydration completed")
+        
+        # Sunlight
+        if not baseline_status.get("sunlight", False):
+            if st.button("✅ Sunlight Exposure", key="sunlight_btn", use_container_width=True):
+                mark_healthy_baseline_completed("sunlight")
+                st.success("Sunlight logged! ☀️")
+                st.rerun()
+        else:
+            st.success("✅ Sunlight Exposure completed")
+    
+    # Show streaks
+    st.markdown("### 🔥 Current Streaks")
+    streaks = S().get("healthy_baseline", {}).get("streaks", {})
+    
+    streak_cols = st.columns(4)
+    activities = ["meditation", "sleep_quality", "exercise", "nutrition"]
+    for i, activity in enumerate(activities):
+        with streak_cols[i]:
+            streak = streaks.get(activity, 0)
+            activity_name = activity.replace("_", " ").title()
+            if streak > 0:
+                st.metric(activity_name, f"{streak} days 🔥")
+            else:
+                st.metric(activity_name, "0 days")
+    
+    # Educational content
+    with st.expander("🧠 Brain Health Science", expanded=False):
+        st.markdown("""
+        **Meditation**: Increases gray matter density, improves attention and emotional regulation
+        
+        **Quality Sleep**: Essential for memory consolidation, toxin clearance, and neuroplasticity
+        
+        **Exercise**: Promotes BDNF production, neurogenesis, and cognitive performance
+        
+        **MIND Diet**: Mediterranean-DASH hybrid optimized for brain health
+        - Leafy greens, berries, nuts, fish, olive oil
+        - Limit red meat, butter, cheese, fried foods
+        
+        **Hydration**: Even mild dehydration impairs cognitive function
+        
+        **Sunlight**: Regulates circadian rhythms and vitamin D production
+        
+        **Social Connection**: Reduces stress hormones, supports cognitive resilience
+        
+        **Reading**: Builds cognitive reserve and maintains neural plasticity
+        """)
+    
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Lifestyle factors account for 40-50% of cognitive aging variance (Ngandu et al., 2015). The MIND diet reduces Alzheimer's risk by 53% (Morris et al., 2015). Regular meditation increases cortical thickness (Lazar et al., 2005).")
+
 # ----- Settings -----
 def page_settings():
     page_header("Settings & Backup")
@@ -4063,6 +4555,8 @@ def integrate_mastered_topics():
 # ========== Navigation & Pages ==========
 PAGES = [
     "Dashboard",
+    "HEALTHY BASELINE",
+    "Healthy Baseline",
     "SPACED LEARNING",
     "Spaced Review",
     "World Model", 
@@ -4897,6 +5391,8 @@ with st.sidebar:
                 page_completed = True
             elif "Anchoring" in page and completion_status.get("anchoring", False):
                 page_completed = True
+            elif "Healthy Baseline" in page and all(completion_status.get(activity, False) for activity in ["meditation", "sleep_quality", "nutrition", "exercise", "social_engagement", "hydration", "sunlight", "reading"]):
+                page_completed = True
             elif "World Model" in page and (completion_status.get("world_model_a", False) or completion_status.get("world_model_b", False)):
                 page_completed = True
             elif "Topic Study" in page and completion_status.get("topic_study", False):
@@ -4987,6 +5483,7 @@ with st.sidebar:
 
 page = st.session_state["page"]
 if page == "Dashboard": page_dashboard()
+elif page == "Healthy Baseline": page_healthy_baseline()
 elif page == "Spaced Review": page_review()
 elif page == "Topic Study": page_topic_study()
 elif page == "Card Management": page_card_management()
