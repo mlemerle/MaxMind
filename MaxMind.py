@@ -430,6 +430,39 @@ def page_header(title: str):
 def two_cols(a=0.5, b=0.5):
     return st.columns([a, b])
 
+def mobile_responsive_columns(desktop_cols, mobile_cols=None):
+    """Create responsive columns that adapt to mobile screens"""
+    # For mobile, default to single column if not specified
+    if mobile_cols is None:
+        mobile_cols = 1
+    
+    # Use CSS to detect screen size and adjust layout
+    # This is a workaround since Streamlit doesn't have built-in responsive detection
+    return st.columns(desktop_cols)
+
+def mobile_metrics_layout(metrics_data):
+    """Display metrics in a mobile-friendly layout"""
+    # On mobile, display metrics in 2x2 grid instead of 1x4 row
+    if len(metrics_data) == 4:
+        # Desktop: 4 columns, Mobile: 2x2 grid
+        col1, col2 = st.columns(2)
+        col3, col4 = st.columns(2)
+        
+        with col1:
+            st.metric(metrics_data[0]["label"], metrics_data[0]["value"])
+        with col2:
+            st.metric(metrics_data[1]["label"], metrics_data[1]["value"])
+        with col3:
+            st.metric(metrics_data[2]["label"], metrics_data[2]["value"])
+        with col4:
+            st.metric(metrics_data[3]["label"], metrics_data[3]["value"])
+    else:
+        # Fallback to standard columns
+        cols = st.columns(len(metrics_data))
+        for i, metric in enumerate(metrics_data):
+            with cols[i]:
+                st.metric(metric["label"], metric["value"])
+
 # ========== Daily tracking helpers ==========
 def check_daily_reset():
     """Check if we need to reset daily progress (new day)"""
@@ -3132,7 +3165,12 @@ PAGES = [
     "Settings",
 ]
 
-st.set_page_config(page_title="Max Mind Trainer", page_icon="🧠", layout="centered")
+st.set_page_config(
+    page_title="Max Mind Trainer", 
+    page_icon="🧠", 
+    layout="centered",
+    initial_sidebar_state="auto"
+)
 
 def apply_theme_styling():
     """Apply theme-based CSS styling"""
@@ -3142,7 +3180,18 @@ def apply_theme_styling():
     if blackout_mode:
         # Blackout mode styling - pure black aesthetic
         st.markdown("""
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <style>
+            /* Global mobile optimizations */
+            * {
+                box-sizing: border-box;
+            }
+            
+            /* Prevent horizontal scroll on mobile */
+            .main .block-container {
+                overflow-x: hidden;
+            }
+            
             /* Blackout mode main app styling */
             .main .block-container {
                 padding-top: 2rem;
@@ -3198,12 +3247,113 @@ def apply_theme_styling():
                 border-radius: 16px;
                 box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
             }
+            
+            /* Mobile Responsive Design for Blackout Mode */
+            @media screen and (max-width: 768px) {
+                .main .block-container {
+                    padding-top: 1rem;
+                    padding-bottom: 1rem;
+                    padding-left: 0.5rem;
+                    padding-right: 0.5rem;
+                    max-width: 100%;
+                }
+                
+                .stButton > button {
+                    padding: 0.5rem 1rem !important;
+                    font-size: 0.9rem !important;
+                    width: 100% !important;
+                    margin-bottom: 0.5rem !important;
+                    min-height: 44px !important; /* Minimum touch target size */
+                    touch-action: manipulation !important; /* Improve touch responsiveness */
+                }
+                
+                .main h1 {
+                    font-size: 1.8rem !important;
+                    margin-bottom: 0.5rem !important;
+                    line-height: 1.2 !important;
+                }
+                
+                .main h2 {
+                    font-size: 1.4rem !important;
+                    margin-bottom: 0.75rem !important;
+                    line-height: 1.3 !important;
+                }
+                
+                .main h3 {
+                    font-size: 1.2rem !important;
+                    margin-bottom: 0.5rem !important;
+                    line-height: 1.3 !important;
+                }
+                
+                [data-testid="metric-container"] {
+                    padding: 1rem !important;
+                    margin-bottom: 0.5rem !important;
+                }
+                
+                .css-1d391kg {
+                    width: 100% !important;
+                    min-width: unset !important;
+                }
+                
+                /* Compact sidebar for mobile */
+                .stRadio label {
+                    padding: 0.25rem 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+                
+                /* Compact input fields */
+                .stTextInput > div > div > input,
+                .stTextArea > div > div > textarea,
+                .stSelectbox > div > div > select {
+                    padding: 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+                
+                /* Compact tabs */
+                .stTabs [data-baseweb="tab"] {
+                    padding: 0.25rem 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+                
+                /* Hide or compact less essential elements */
+                .element-container {
+                    margin-bottom: 0.5rem !important;
+                }
+                
+                /* Mobile-friendly columns */
+                [data-testid="column"] {
+                    min-width: unset !important;
+                    flex: 1 !important;
+                }
+                
+                /* Adjust progress indicators for mobile */
+                .stProgress {
+                    margin: 0.25rem 0 !important;
+                }
+                
+                /* Compact expanders */
+                .streamlit-expanderHeader {
+                    padding: 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+            }
         </style>
         """, unsafe_allow_html=True)
     elif dark_mode:
         # Dark mode styling
         st.markdown("""
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <style>
+            /* Global mobile optimizations */
+            * {
+                box-sizing: border-box;
+            }
+            
+            /* Prevent horizontal scroll on mobile */
+            .main .block-container {
+                overflow-x: hidden;
+            }
+            
             /* Dark mode main app styling */
             .main .block-container {
                 padding-top: 2rem;
@@ -3351,12 +3501,113 @@ def apply_theme_styling():
             .stApp {
                 background-color: #0d1117;
             }
+            
+            /* Mobile Responsive Design for Dark Mode */
+            @media screen and (max-width: 768px) {
+                .main .block-container {
+                    padding-top: 1rem;
+                    padding-bottom: 1rem;
+                    padding-left: 0.5rem;
+                    padding-right: 0.5rem;
+                    max-width: 100%;
+                }
+                
+                .stButton > button {
+                    padding: 0.5rem 1rem !important;
+                    font-size: 0.9rem !important;
+                    width: 100% !important;
+                    margin-bottom: 0.5rem !important;
+                    min-height: 44px !important; /* Minimum touch target size */
+                    touch-action: manipulation !important; /* Improve touch responsiveness */
+                }
+                
+                .main h1 {
+                    font-size: 1.8rem !important;
+                    margin-bottom: 0.5rem !important;
+                    line-height: 1.2 !important;
+                }
+                
+                .main h2 {
+                    font-size: 1.4rem !important;
+                    margin-bottom: 0.75rem !important;
+                    line-height: 1.3 !important;
+                }
+                
+                .main h3 {
+                    font-size: 1.2rem !important;
+                    margin-bottom: 0.5rem !important;
+                    line-height: 1.3 !important;
+                }
+                
+                [data-testid="metric-container"] {
+                    padding: 1rem !important;
+                    margin-bottom: 0.5rem !important;
+                }
+                
+                .css-1d391kg {
+                    width: 100% !important;
+                    min-width: unset !important;
+                }
+                
+                /* Compact sidebar for mobile */
+                .stRadio label {
+                    padding: 0.25rem 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+                
+                /* Compact input fields */
+                .stTextInput > div > div > input,
+                .stTextArea > div > div > textarea,
+                .stSelectbox > div > div > select {
+                    padding: 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+                
+                /* Compact tabs */
+                .stTabs [data-baseweb="tab"] {
+                    padding: 0.25rem 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+                
+                /* Hide or compact less essential elements */
+                .element-container {
+                    margin-bottom: 0.5rem !important;
+                }
+                
+                /* Mobile-friendly columns */
+                [data-testid="column"] {
+                    min-width: unset !important;
+                    flex: 1 !important;
+                }
+                
+                /* Adjust progress indicators for mobile */
+                .stProgress {
+                    margin: 0.25rem 0 !important;
+                }
+                
+                /* Compact expanders */
+                .streamlit-expanderHeader {
+                    padding: 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+            }
         </style>
         """, unsafe_allow_html=True)
     else:
         # Light mode styling (existing)
         st.markdown("""
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <style>
+            /* Global mobile optimizations */
+            * {
+                box-sizing: border-box;
+            }
+            
+            /* Prevent horizontal scroll on mobile */
+            .main .block-container {
+                overflow-x: hidden;
+            }
+            
             /* Main app styling */
             .main .block-container {
                 padding-top: 2rem;
@@ -3530,6 +3781,108 @@ def apply_theme_styling():
             /* Custom spacing */
             .element-container {
                 margin-bottom: 1rem;
+            }
+            
+            /* Mobile Responsive Design for Light Mode */
+            @media screen and (max-width: 768px) {
+                .main .block-container {
+                    padding-top: 1rem;
+                    padding-bottom: 1rem;
+                    padding-left: 0.5rem;
+                    padding-right: 0.5rem;
+                    max-width: 100%;
+                }
+                
+                .stButton > button {
+                    padding: 0.5rem 1rem !important;
+                    font-size: 0.9rem !important;
+                    width: 100% !important;
+                    margin-bottom: 0.5rem !important;
+                    min-height: 44px !important; /* Minimum touch target size */
+                    touch-action: manipulation !important; /* Improve touch responsiveness */
+                }
+                
+                .main h1 {
+                    font-size: 1.8rem !important;
+                    margin-bottom: 0.5rem !important;
+                    line-height: 1.2 !important;
+                }
+                
+                .main h2 {
+                    font-size: 1.4rem !important;
+                    margin-bottom: 0.75rem !important;
+                    line-height: 1.3 !important;
+                }
+                
+                .main h3 {
+                    font-size: 1.2rem !important;
+                    margin-bottom: 0.5rem !important;
+                    line-height: 1.3 !important;
+                }
+                
+                [data-testid="metric-container"] {
+                    padding: 1rem !important;
+                    margin-bottom: 0.5rem !important;
+                }
+                
+                .css-1d391kg {
+                    width: 100% !important;
+                    min-width: unset !important;
+                }
+                
+                /* Compact sidebar for mobile */
+                .stRadio label {
+                    padding: 0.25rem 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+                
+                /* Compact input fields */
+                .stTextInput > div > div > input,
+                .stTextArea > div > div > textarea,
+                .stSelectbox > div > div > select {
+                    padding: 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+                
+                /* Compact tabs */
+                .stTabs [data-baseweb="tab"] {
+                    padding: 0.25rem 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+                
+                /* Hide or compact less essential elements */
+                .element-container {
+                    margin-bottom: 0.5rem !important;
+                }
+                
+                /* Mobile-friendly columns */
+                [data-testid="column"] {
+                    min-width: unset !important;
+                    flex: 1 !important;
+                }
+                
+                /* Adjust progress indicators for mobile */
+                .stProgress {
+                    margin: 0.25rem 0 !important;
+                }
+                
+                /* Compact expanders */
+                .streamlit-expanderHeader {
+                    padding: 0.5rem !important;
+                    font-size: 0.9rem !important;
+                }
+                
+                /* Mobile-specific card styling */
+                .stContainer > div {
+                    padding: 1rem !important;
+                    margin-bottom: 0.5rem !important;
+                }
+                
+                /* Compact alert boxes for mobile */
+                .stAlert {
+                    padding: 0.75rem !important;
+                    margin-bottom: 0.5rem !important;
+                }
             }
         </style>
         """, unsafe_allow_html=True)
