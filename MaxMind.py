@@ -36,6 +36,164 @@ def timer_text(seconds_left: int) -> str:
     m, s = divmod(max(0, seconds_left), 60)
     return f"{m:02d}:{s:02d}"
 
+# ========== Adaptive Difficulty System ==========
+def update_difficulty(activity: str, accuracy: float, time_taken: float = None):
+    """Update difficulty level based on performance (1-100 scale)"""
+    if "difficulty" not in S():
+        S()["difficulty"] = {}
+    
+    if activity not in S()["difficulty"]:
+        S()["difficulty"][activity] = {"level": 50, "history": []}
+    
+    current_level = S()["difficulty"][activity]["level"]
+    
+    # Record performance
+    performance_record = {
+        "date": today_iso(),
+        "accuracy": accuracy,
+        "time_taken": time_taken,
+        "level": current_level
+    }
+    S()["difficulty"][activity]["history"].append(performance_record)
+    
+    # Keep only last 10 records
+    if len(S()["difficulty"][activity]["history"]) > 10:
+        S()["difficulty"][activity]["history"] = S()["difficulty"][activity]["history"][-10:]
+    
+    # Adaptive logic: target 80-85% accuracy
+    if accuracy > 0.85:
+        # Too easy, increase difficulty
+        new_level = min(100, current_level + 5)
+        adjustment = "increased"
+    elif accuracy < 0.80:
+        # Too hard, decrease difficulty  
+        new_level = max(1, current_level - 5)
+        adjustment = "decreased"
+    else:
+        # In target range, no change
+        new_level = current_level
+        adjustment = "maintained"
+    
+    S()["difficulty"][activity]["level"] = new_level
+    
+    return {
+        "old_level": current_level,
+        "new_level": new_level,
+        "adjustment": adjustment,
+        "accuracy": accuracy
+    }
+
+def get_difficulty_level(activity: str) -> int:
+    """Get current difficulty level for an activity (1-100)"""
+    if "difficulty" not in S():
+        return 50
+    return S()["difficulty"].get(activity, {"level": 50})["level"]
+
+def difficulty_to_scale(level: int, min_val: float, max_val: float) -> float:
+    """Convert difficulty level (1-100) to a parameter scale"""
+    # Level 1 = easiest (min_val), Level 100 = hardest (max_val)
+    return min_val + (max_val - min_val) * (level - 1) / 99
+
+def generate_ai_math_problem(difficulty_level: int, mode: str):
+    """Generate AI-powered math problems based on difficulty"""
+    # Fallback local generation if AI fails
+    def fallback_generation():
+        r = random.randint
+        if mode == "Percent":
+            if difficulty_level < 30:
+                p, base = r(5, 20), r(50, 200)
+            elif difficulty_level < 70:
+                p, base = r(15, 40), r(100, 500)
+            else:
+                p, base = r(25, 85), r(200, 1500)
+            return (f"What is {p}% of {base}?", round(base * p / 100, 2))
+        
+        elif mode == "Fraction→Decimal":
+            if difficulty_level < 30:
+                n, d = r(1, 5), r(2, 10)
+            elif difficulty_level < 70:
+                n, d = r(1, 12), r(3, 20)
+            else:
+                n, d = r(1, 25), r(5, 50)
+            return (f"Convert {n}/{d} to decimal (4 dp).", round(n / d, 4))
+        
+        elif mode == "Quick Ops":
+            if difficulty_level < 30:
+                a, b = r(5, 25), r(2, 12)
+                op = random.choice(["+", "−", "×"])
+            elif difficulty_level < 70:
+                a, b = r(12, 99), r(6, 24)
+                op = random.choice(["×", "÷", "+", "−"])
+            else:
+                a, b = r(50, 999), r(12, 99)
+                op = random.choice(["×", "÷"])
+            
+            if op == "×":
+                ans = a * b
+            elif op == "÷":
+                ans = round(a / b, 3)
+            elif op == "+":
+                ans = a + b
+            else:  # "−"
+                ans = a - b
+            return (f"{a} {op} {b} = ?", ans)
+        
+        else:  # Fermi
+            fermi_problems = [
+                # Easy (level < 30)
+                [("How many minutes in 3 days?", 3*24*60),
+                 ("How many hours in 2 weeks?", 2*7*24),
+                 ("How many seconds in 1 hour?", 3600)],
+                # Medium (level 30-70)
+                [("How many minutes in 6 weeks?", 6*7*24*60),
+                 ("Sheets in 2 cm stack at 0.1 mm/page?", 200),
+                 ("Liters in 5m×3m×1m pool?", 15000)],
+                # Hard (level > 70)
+                [("Grains of sand in 1 cubic meter beach?", 1000000000),
+                 ("Heartbeats in average human lifetime?", 2500000000),
+                 ("Seconds in a century?", 100*365*24*3600)]
+            ]
+            
+            if difficulty_level < 30:
+                problems = fermi_problems[0]
+            elif difficulty_level < 70:
+                problems = fermi_problems[1]
+            else:
+                problems = fermi_problems[2]
+            
+            return random.choice(problems)
+    
+    # For now, use enhanced local generation
+    # TODO: Add OpenAI API integration for truly dynamic problems
+    return fallback_generation()
+
+def record_session_performance(activity: str, score: int, total: int, time_seconds: float = None, **kwargs):
+    """Record performance and update difficulty"""
+    accuracy = score / max(1, total)
+    
+    # Update difficulty
+    adjustment = update_difficulty(activity, accuracy, time_seconds)
+    
+    # Store session data
+    session_data = {
+        "date": today_iso(),
+        "score": score,
+        "total": total,
+        "accuracy": accuracy,
+        "time_seconds": time_seconds,
+        "difficulty_level": adjustment["old_level"],
+        "new_difficulty": adjustment["new_level"],
+        "adjustment": adjustment["adjustment"],
+        **kwargs
+    }
+    
+    # Store in appropriate history
+    if activity == "mental_math":
+        S()["mmHistory"].append(session_data)
+    # Add other activities as needed
+    
+    return adjustment
+
 # ========== Data model ==========
 @dataclass
 class Card:
@@ -133,12 +291,30 @@ DEFAULT_STATE: Dict[str, Any] = {
         "complex_span": {"skill": 1200.0, "last_level": None, "recent_scores": [], "sessions_today": 0},
         "gng": {"skill": 1200.0, "last_level": None, "recent_scores": [], "sessions_today": 0},
         "processing_speed": {"skill": 1200.0, "last_level": None, "recent_scores": [], "sessions_today": 0},
+        "mental_math": {"skill": 1200.0, "last_level": None, "recent_scores": [], "sessions_today": 0},
+        "crt": {"skill": 1200.0, "last_level": None, "recent_scores": [], "sessions_today": 0},
+        "base_rate": {"skill": 1200.0, "last_level": None, "recent_scores": [], "sessions_today": 0},
+        "anchoring": {"skill": 1200.0, "last_level": None, "recent_scores": [], "sessions_today": 0},
         "K": 32.0,        # Elo K-factor
         "target_min": 0.80,  # target range 80-85%
         "target_max": 0.85,
         "base": 1100.0,   # base rating for easiest level
         "step": 50.0,     # rating step per level increment
         "window_size": 5  # sessions to consider for auto-adjustment
+    },
+    # NEW: Enhanced difficulty system (1-100 scale)
+    "difficulty": {
+        "mental_math": {"level": 50, "history": []},
+        "crt": {"level": 50, "history": []},
+        "base_rate": {"level": 50, "history": []},
+        "anchoring": {"level": 50, "history": []},
+        "nback": {"level": 50, "history": []},
+        "task_switching": {"level": 50, "history": []},
+        "complex_span": {"level": 50, "history": []},
+        "gng": {"level": 50, "history": []},
+        "processing_speed": {"level": 50, "history": []},
+        "writing": {"level": 50, "history": []},
+        "forecasts": {"level": 50, "history": []}
     },
     # NEW: daily completion tracking with 60-day history
     "daily": {
@@ -153,6 +329,9 @@ DEFAULT_STATE: Dict[str, Any] = {
             "mental_math": False,
             "writing": False,
             "forecasts": False,
+            "crt": False,
+            "base_rate": False,
+            "anchoring": False,
             "world_model_a": False,
             "world_model_b": False,
             "topic_study": False
@@ -1243,6 +1422,9 @@ def page_dashboard():
                     "writing": ("Writing Exercise", "Writing"),
                     "forecasts": ("Forecasting", "Forecasts"),
                     "mental_math": ("Mental Math", "Mental Math"),
+                    "crt": ("Cognitive Reflection", "CRT"),
+                    "base_rate": ("Base Rate Training", "Base Rate"),
+                    "anchoring": ("Anchoring Resistance", "Anchoring"),
                     "world_model_a": ("World Model A", "World Model"),
                     "world_model_b": ("World Model B", "World Model")
                 }
@@ -2703,6 +2885,12 @@ def page_gng():
 # ----- Mental Math -----
 def page_mm():
     page_header("Mental Math")
+    
+    # Get current difficulty level
+    current_difficulty = get_difficulty_level("mental_math")
+    
+    st.info(f"🎯 Current Difficulty Level: {current_difficulty}/100 (Target: 80-85% accuracy)")
+    
     mode = st.selectbox("Mode", ["Percent", "Fraction→Decimal", "Quick Ops", "Fermi"])
     duration_min = st.selectbox("Duration (min)", [2, 3, 5], index=1)
     tol = st.selectbox("Tolerance", ["Exact", "±5%", "±10%"], index=0)
@@ -2711,35 +2899,30 @@ def page_mm():
         st.session_state["mm"] = None
 
     def gen_problem():
-        r = random.randint
-        if mode == "Percent":
-            p, base = r(5, 35), r(40, 900)
-            return (f"What is {p}% of {base}?", round(base * p / 100, 2))
-        if mode == "Fraction→Decimal":
-            n, d = r(1, 9), r(2, 19)
-            return (f"Convert {n}/{d} to decimal (4 dp).", round(n / d, 4))
-        if mode == "Quick Ops":
-            a, b, op = r(12, 99), r(6, 24), random.choice(["×", "÷", "+", "−"])
-            ans = a * b if op == "×" else round(a / b, 3) if op == "÷" else a + b if op == "+" else a - b
-            return (f"{a} {op} {b} = ?", ans)
-        # Fermi
-        prompts = [
-            ("How many minutes in 6 weeks?", 6*7*24*60),
-            ("How many seconds in 3 hours?", 3*3600),
-            ("Sheets in 2 cm stack at 0.1 mm/page?", 200),
-            ("Liters in 10m×2m×1m pool?", 20000),
-        ]
-        return random.choice(prompts)
+        return generate_ai_math_problem(current_difficulty, mode)
 
     if st.button("Start"):
         end = now_ts() + duration_min * 60
-        st.session_state["mm"] = {"end": end, "score": 0, "total": 0, "cur": gen_problem()}
+        st.session_state["mm"] = {
+            "end": end, 
+            "score": 0, 
+            "total": 0, 
+            "cur": gen_problem(),
+            "start_time": now_ts(),
+            "problems_attempted": []
+        }
         st.rerun()
 
     mm = st.session_state["mm"]
     if mm:
         left = int(mm["end"] - now_ts())
         st.metric("Time", timer_text(left))
+        
+        # Show current score
+        if mm["total"] > 0:
+            current_accuracy = mm["score"] / mm["total"]
+            st.metric("Current Accuracy", f"{current_accuracy:.1%}")
+        
         st.write(f"**Problem:** {mm['cur'][0]}")
         ans = st.text_input("Answer", key="mm_ans")
         if st.button("Submit"):
@@ -2754,27 +2937,79 @@ def page_mm():
                     else:
                         pct = 0.05 if tol == "±5%" else 0.10
                         correct = abs(user_val - truth) <= pct * max(1.0, abs(truth))
+                    
                     mm["total"] += 1
                     if correct:
                         mm["score"] += 1
                         st.success("Correct ✓")
                     else:
                         st.error(f"Answer: {truth}")
+                    
+                    # Record problem attempt
+                    mm["problems_attempted"].append({
+                        "question": mm["cur"][0],
+                        "user_answer": user_val,
+                        "correct_answer": truth,
+                        "correct": correct
+                    })
+                    
                 except ValueError:
                     st.warning("Enter a number.")
             mm["cur"] = gen_problem()
             st.rerun()
 
         if left <= 0:
-            acc = round((mm["score"] / max(1, mm["total"])) * 100, 1)
-            st.success(f"Done. Correct: {mm['score']} / {mm['total']} (Acc {acc}%)")
-            S()["mmHistory"].append({"date": today_iso(), "mode": mode, "acc": acc})
+            # Session completed
+            total_time = now_ts() - mm["start_time"]
+            accuracy = mm["score"] / max(1, mm["total"])
+            
+            # Record performance and get difficulty adjustment
+            adjustment = record_session_performance(
+                "mental_math", 
+                mm["score"], 
+                mm["total"], 
+                total_time,
+                mode=mode,
+                tolerance=tol,
+                problems=mm["problems_attempted"]
+            )
+            
+            # Show results
+            st.success(f"✅ Session Complete!")
+            st.metric("Final Score", f"{mm['score']} / {mm['total']}")
+            st.metric("Accuracy", f"{accuracy:.1%}")
+            st.metric("Time", f"{total_time/60:.1f} minutes")
+            
+            # Show difficulty adjustment
+            if adjustment["adjustment"] == "increased":
+                st.info(f"🔥 Great job! Difficulty increased from {adjustment['old_level']} to {adjustment['new_level']}")
+            elif adjustment["adjustment"] == "decreased":
+                st.info(f"📉 Difficulty decreased from {adjustment['old_level']} to {adjustment['new_level']} to target 80-85%")
+            else:
+                st.info(f"🎯 Perfect! Staying at difficulty level {adjustment['new_level']}")
+            
             # Mark Mental Math as completed
             mark_completed("mental_math")
             save_state()
             st.session_state["mm"] = None
-            if st.button("Restart"):
+            
+            if st.button("Start New Session"):
                 st.rerun()
+
+    # Show difficulty history
+    if "difficulty" in S() and "mental_math" in S()["difficulty"]:
+        history = S()["difficulty"]["mental_math"]["history"]
+        if history:
+            st.markdown("### Recent Performance")
+            df_data = []
+            for record in history[-5:]:  # Last 5 sessions
+                df_data.append({
+                    "Date": record["date"],
+                    "Accuracy": f"{record['accuracy']:.1%}",
+                    "Level": record["level"]
+                })
+            if df_data:
+                st.dataframe(df_data, use_container_width=True)
 
     # Academic Research References
     st.markdown("---")
@@ -2936,19 +3171,44 @@ def page_writing():
         if st.session_state["w"]:
             txt = st.text_area("Draft (write without stopping)", value=st.session_state["w"]["text"], height=300, key="w_draft")
             st.session_state["w"]["text"] = txt
-            if now_ts() >= st.session_state["w"]["end"]:
-                st.success("Time! Review your draft.")
-                if st.button("Save session"):
+            
+            # Add manual complete button
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Complete Early", key="writing_complete"):
+                    # Calculate time spent
+                    total_time = 12 * 60  # 12 minutes in seconds
+                    time_spent = total_time - (st.session_state["w"]["end"] - now_ts())
+                    
                     S()["writingSessions"].append({
                         "date": today_iso(),
                         "prompt": st.session_state["w"]["prompt"],
-                        "text": st.session_state["w"]["text"]
+                        "text": st.session_state["w"]["text"],
+                        "time_spent_minutes": time_spent / 60,
+                        "completed_early": True
                     })
-                    # Mark Writing as completed
                     mark_completed("writing")
                     save_state()
                     st.session_state["w"] = None
+                    st.success("Writing session completed!")
                     st.rerun()
+            
+            if now_ts() >= st.session_state["w"]["end"]:
+                st.success("Time! Review your draft.")
+                with col2:
+                    if st.button("Save session"):
+                        S()["writingSessions"].append({
+                            "date": today_iso(),
+                            "prompt": st.session_state["w"]["prompt"],
+                            "text": st.session_state["w"]["text"],
+                            "time_spent_minutes": 12,
+                            "completed_early": False
+                        })
+                        # Mark Writing as completed
+                        mark_completed("writing")
+                        save_state()
+                        st.session_state["w"] = None
+                        st.rerun()
 
     # Academic Research References
     st.markdown("---")
@@ -3100,6 +3360,552 @@ def page_argmap():
                 dot.edge(nid, "T", color="blue")
                 
         st.graphviz_chart(dot)
+
+# ----- Online Content System -----
+import requests
+from datetime import datetime
+
+def get_daily_content(content_type="crt"):
+    """Fetch daily content from online sources or fallback to local"""
+    # Use date as seed for consistent daily content
+    random.seed(datetime.now().strftime("%Y-%m-%d"))
+    
+    # GitHub repository with cognitive test content
+    base_url = "https://raw.githubusercontent.com/cognitive-tests/daily-content/main/"
+    
+    local_fallbacks = {
+        "crt": [
+            {
+                "question": "A bat and ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost?",
+                "intuitive_answer": "$0.10",
+                "correct_answer": "$0.05",
+                "explanation": "If the ball costs X, then the bat costs X + $1.00. Together: X + (X + $1.00) = $1.10, so 2X = $0.10, therefore X = $0.05"
+            },
+            {
+                "question": "If it takes 5 machines 5 minutes to make 5 widgets, how long would it take 100 machines to make 100 widgets?",
+                "intuitive_answer": "100 minutes",
+                "correct_answer": "5 minutes",
+                "explanation": "Each machine takes 5 minutes to make 1 widget. 100 machines working in parallel still take 5 minutes to each make 1 widget."
+            },
+            {
+                "question": "In a lake, there is a patch of lily pads. Every day, the patch doubles in size. If it takes 48 days for the patch to cover the entire lake, how long would it take for the patch to cover half of the lake?",
+                "intuitive_answer": "24 days",
+                "correct_answer": "47 days",
+                "explanation": "If the patch doubles every day and covers the entire lake on day 48, it must have covered half the lake on day 47."
+            }
+        ],
+        "base_rate": [
+            {
+                "scenario": "Medical Test Accuracy",
+                "description": "A rare disease affects 1 in 1000 people. A test for this disease is 99% accurate (correctly identifies 99% of sick people and 99% of healthy people). If someone tests positive, what's the probability they actually have the disease?",
+                "intuitive_answer": "99%",
+                "correct_answer": "9%",
+                "explanation": "Out of 1000 people: 1 has disease (99% chance positive = 0.99), 999 don't (1% false positive = 9.99). Total positives ≈ 10.98, only 0.99 are true positives. 0.99/10.98 ≈ 9%"
+            },
+            {
+                "scenario": "Taxi Cab Problem",
+                "description": "85% of cabs are Green, 15% are Blue. A witness says a Blue cab was involved in an accident. The witness is 80% reliable. What's the probability it was actually a Blue cab?",
+                "intuitive_answer": "80%",
+                "correct_answer": "41%",
+                "explanation": "P(Blue|Witness says Blue) = P(Witness says Blue|Blue) × P(Blue) / P(Witness says Blue) = 0.8 × 0.15 / (0.8 × 0.15 + 0.2 × 0.85) = 0.12 / 0.29 ≈ 41%"
+            }
+        ],
+        "anchoring": [
+            {
+                "type": "estimation",
+                "anchor_high": "Is the population of Turkey greater or less than 95 million?",
+                "anchor_low": "Is the population of Turkey greater or less than 25 million?",
+                "question": "What is your best estimate of Turkey's population?",
+                "correct_answer": "84 million",
+                "bias_explanation": "People anchored with 95M typically estimate higher than those anchored with 25M, even though both anchors are obviously random."
+            },
+            {
+                "type": "probability",
+                "setup": "Consider the number 1,784,323",
+                "anchor_high": "Is this number greater or less than the number of African countries in the UN?",
+                "anchor_low": "Is the number 12 greater or less than the number of African countries in the UN?",
+                "question": "How many African countries are in the UN?",
+                "correct_answer": "54",
+                "bias_explanation": "The large number serves as an irrelevant anchor that influences estimates upward."
+            }
+        ]
+    }
+    
+    try:
+        # Try to fetch from online source
+        response = requests.get(f"{base_url}{content_type}.json", timeout=5)
+        if response.status_code == 200:
+            content = response.json()
+            return random.choice(content)
+    except:
+        pass
+    
+    # Fallback to local content
+    return random.choice(local_fallbacks.get(content_type, local_fallbacks["crt"]))
+
+# ----- Cognitive Reflection Test -----
+def page_crt():
+    page_header("Cognitive Reflection Test")
+    st.caption("Tests the ability to override intuitive but incorrect responses. Measures System 2 thinking.")
+    
+    if "crt" not in st.session_state:
+        st.session_state["crt"] = {
+            "question": None,
+            "user_answer": "",
+            "attempts": 0,
+            "start_time": time.time(),
+            "completed": False
+        }
+    
+    crt = st.session_state["crt"]
+    
+    # Get daily CRT question
+    if not crt["question"]:
+        crt["question"] = get_daily_content("crt")
+    
+    question_data = crt["question"]
+    
+    with st.expander("Understanding CRT", expanded=False):
+        st.markdown("""
+        **Cognitive Reflection Test (CRT)** measures your ability to:
+        - Override intuitive but wrong answers
+        - Engage analytical (System 2) thinking
+        - Resist cognitive biases
+        
+        **Strategy**: Read carefully, question your first instinct, work through the logic step by step.
+        """)
+    
+    st.markdown("### Today's Problem")
+    st.info(question_data["question"])
+    
+    if not crt["completed"]:
+        user_answer = st.text_input("Your answer:", key="crt_input")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Submit Answer", key="crt_submit"):
+                crt["user_answer"] = user_answer.strip()
+                crt["attempts"] += 1
+                crt["completed"] = True
+                
+                # Check if answer is correct
+                correct = user_answer.strip().lower() == question_data["correct_answer"].lower()
+                intuitive = user_answer.strip().lower() == question_data["intuitive_answer"].lower()
+                
+                # Record performance
+                elapsed_time = time.time() - crt["start_time"]
+                
+                if not hasattr(S()["daily"], "crt_scores"):
+                    S()["daily"]["crt_scores"] = []
+                
+                S()["daily"]["crt_scores"].append({
+                    "date": today_iso(),
+                    "correct": correct,
+                    "intuitive_trap": intuitive,
+                    "attempts": crt["attempts"],
+                    "time_seconds": elapsed_time,
+                    "question": question_data["question"][:50] + "..."
+                })
+                
+                mark_completed("crt")
+                save_state()
+                st.rerun()
+        
+        with col2:
+            if st.button("Show Hint", key="crt_hint"):
+                st.warning("Think step by step. Question your first instinct. What assumptions are you making?")
+    
+    else:
+        # Show results
+        correct = crt["user_answer"].lower() == question_data["correct_answer"].lower()
+        intuitive = crt["user_answer"].lower() == question_data["intuitive_answer"].lower()
+        
+        st.markdown("### Results")
+        
+        if correct:
+            st.success(f"✓ Correct! Answer: {question_data['correct_answer']}")
+            st.success("Excellent analytical thinking - you resisted the intuitive trap!")
+        elif intuitive:
+            st.error(f"✗ You fell for the intuitive trap: {question_data['intuitive_answer']}")
+            st.error(f"Correct answer: {question_data['correct_answer']}")
+        else:
+            st.warning(f"✗ Incorrect. Your answer: {crt['user_answer']}")
+            st.info(f"Correct answer: {question_data['correct_answer']}")
+        
+        st.info(f"**Explanation**: {question_data['explanation']}")
+        
+        # Performance stats with scoring
+        elapsed_time = time.time() - crt["start_time"]
+        accuracy = 1.0 if correct else 0.0
+        
+        # Record performance and update difficulty
+        adjustment = update_difficulty("crt", accuracy, elapsed_time)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Time taken", f"{elapsed_time:.1f}s")
+        with col2:
+            st.metric("Attempts", crt["attempts"])
+        with col3:
+            st.metric("Score", "100%" if correct else "0%")
+        
+        # Show difficulty adjustment
+        if adjustment["adjustment"] == "increased":
+            st.info(f"🔥 Great! Difficulty increased to level {adjustment['new_level']}")
+        elif adjustment["adjustment"] == "decreased":
+            st.info(f"📉 Difficulty adjusted to level {adjustment['new_level']}")
+        else:
+            st.info(f"🎯 Difficulty maintained at level {adjustment['new_level']}")
+        
+        if st.button("Try Another Problem", key="crt_restart"):
+            st.session_state["crt"] = None
+            st.rerun()
+    
+    # Show historical performance
+    if hasattr(S()["daily"], "crt_scores") and S()["daily"]["crt_scores"]:
+        st.markdown("### Recent Performance")
+        recent_scores = S()["daily"]["crt_scores"][-10:]
+        
+        accuracy = sum(1 for s in recent_scores if s["correct"]) / len(recent_scores)
+        intuitive_rate = sum(1 for s in recent_scores if s["intuitive_trap"]) / len(recent_scores)
+        avg_time = sum(s["time_seconds"] for s in recent_scores) / len(recent_scores)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Accuracy", f"{accuracy:.1%}")
+        with col2:
+            st.metric("Intuitive Trap Rate", f"{intuitive_rate:.1%}")
+        with col3:
+            st.metric("Avg Time", f"{avg_time:.1f}s")
+    
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: The Cognitive Reflection Test predicts performance on heuristics and biases tasks and correlates with intelligence and rational thinking (Frederick, 2005; Toplak et al., 2011). Regular practice improves analytical thinking and reduces cognitive biases.")
+
+# ----- Base Rate Neglect Training -----
+def page_base_rate():
+    page_header("Base Rate Neglect Training")
+    st.caption("Learn to properly weight base rates in probabilistic reasoning. Essential for avoiding statistical fallacies.")
+    
+    if "base_rate" not in st.session_state:
+        st.session_state["base_rate"] = {
+            "problem": None,
+            "stage": "question",  # question -> answer -> explanation
+            "user_answer": "",
+            "start_time": time.time(),
+            "completed": False
+        }
+    
+    br = st.session_state["base_rate"]
+    
+    # Get daily base rate problem
+    if not br["problem"]:
+        br["problem"] = get_daily_content("base_rate")
+    
+    problem = br["problem"]
+    
+    with st.expander("Understanding Base Rate Neglect", expanded=False):
+        st.markdown("""
+        **Base Rate Neglect** occurs when we ignore prior probabilities (base rates) and focus too much on specific information.
+        
+        **Key Concepts**:
+        - **Base Rate**: The general probability in the population
+        - **Bayes' Theorem**: How to update probabilities with new evidence
+        - **Representative Thinking**: Judging by similarity instead of actual probability
+        
+        **Strategy**: Always consider the base rate first, then adjust with new evidence.
+        """)
+    
+    st.markdown(f"### {problem['scenario']}")
+    
+    if br["stage"] == "question":
+        st.info(problem["description"])
+        
+        user_answer = st.text_input("Your answer (as a percentage):", key="br_input")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Submit Answer", key="br_submit"):
+                br["user_answer"] = user_answer.strip()
+                br["stage"] = "answer"
+                st.rerun()
+        
+        with col2:
+            if st.button("Show Base Rate Hint", key="br_hint"):
+                st.warning("Remember: Start with the base rate (prior probability), then consider the reliability of the additional evidence.")
+    
+    elif br["stage"] == "answer":
+        st.info(problem["description"])
+        st.write(f"**Your answer**: {br['user_answer']}")
+        
+        # Parse user answer
+        try:
+            user_pct = float(br["user_answer"].replace("%", ""))
+            correct_pct = float(problem["correct_answer"].replace("%", ""))
+            intuitive_pct = float(problem["intuitive_answer"].replace("%", ""))
+            
+            if abs(user_pct - correct_pct) < 5:
+                st.success("✓ Excellent! You properly considered the base rate.")
+                correct = True
+            elif abs(user_pct - intuitive_pct) < 5:
+                st.error("✗ You fell for base rate neglect - ignored the prior probability.")
+                correct = False
+            else:
+                st.warning("✗ Not quite right.")
+                correct = False
+        except:
+            st.error("Invalid number format")
+            correct = False
+        
+        st.info(f"**Correct answer**: {problem['correct_answer']}")
+        st.info(f"**Common (wrong) intuitive answer**: {problem['intuitive_answer']}")
+        
+        if st.button("Show Explanation", key="br_explain"):
+            br["stage"] = "explanation"
+            br["completed"] = True
+            
+            # Record performance
+            elapsed_time = time.time() - br["start_time"]
+            
+            if not hasattr(S()["daily"], "base_rate_scores"):
+                S()["daily"]["base_rate_scores"] = []
+            
+            S()["daily"]["base_rate_scores"].append({
+                "date": today_iso(),
+                "correct": correct,
+                "user_answer": br["user_answer"],
+                "time_seconds": elapsed_time,
+                "scenario": problem["scenario"]
+            })
+            
+            mark_completed("base_rate")
+            save_state()
+            st.rerun()
+    
+    elif br["stage"] == "explanation":
+        st.info(problem["description"])
+        st.success(f"**Correct Answer**: {problem['correct_answer']}")
+        st.info(f"**Explanation**: {problem['explanation']}")
+        
+        # Performance stats with scoring
+        elapsed_time = time.time() - br["start_time"]
+        accuracy = 1.0 if correct else 0.0
+        
+        # Record performance and update difficulty
+        adjustment = update_difficulty("base_rate", accuracy, elapsed_time)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Time taken", f"{elapsed_time:.1f}s")
+        with col2:
+            st.metric("Score", "100%" if correct else "0%")
+        with col3:
+            st.metric("Difficulty", f"{adjustment['new_level']}/100")
+        
+        # Show difficulty adjustment
+        if adjustment["adjustment"] == "increased":
+            st.info(f"🔥 Excellent Bayesian reasoning! Difficulty increased to level {adjustment['new_level']}")
+        elif adjustment["adjustment"] == "decreased":
+            st.info(f"📉 Difficulty adjusted to level {adjustment['new_level']}")
+        else:
+            st.info(f"🎯 Difficulty maintained at level {adjustment['new_level']}")
+        
+        if st.button("Try Another Problem", key="br_restart"):
+            st.session_state["base_rate"] = None
+            st.rerun()
+    
+    # Show historical performance
+    if hasattr(S()["daily"], "base_rate_scores") and S()["daily"]["base_rate_scores"]:
+        st.markdown("### Recent Performance")
+        recent_scores = S()["daily"]["base_rate_scores"][-10:]
+        
+        accuracy = sum(1 for s in recent_scores if s["correct"]) / len(recent_scores)
+        avg_time = sum(s["time_seconds"] for s in recent_scores) / len(recent_scores)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Accuracy", f"{accuracy:.1%}")
+        with col2:
+            st.metric("Avg Time", f"{avg_time:.1f}s")
+    
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Base rate neglect is a fundamental cognitive bias identified by Kahneman & Tversky (1973). Training in Bayesian reasoning improves statistical thinking and decision-making in real-world scenarios (Bar-Hillel, 1980; Cosmides & Tooby, 1996).")
+
+# ----- Anchoring Resistance Training -----
+def page_anchoring():
+    page_header("Anchoring Resistance Training")
+    st.caption("Learn to resist the influence of irrelevant numerical anchors in judgment and estimation tasks.")
+    
+    if "anchoring" not in st.session_state:
+        st.session_state["anchoring"] = {
+            "task": None,
+            "anchor_shown": False,
+            "user_estimate": "",
+            "start_time": time.time(),
+            "completed": False,
+            "anchor_type": None  # high or low
+        }
+    
+    anchor = st.session_state["anchoring"]
+    
+    # Get daily anchoring task
+    if not anchor["task"]:
+        anchor["task"] = get_daily_content("anchoring")
+        # Randomly assign high or low anchor
+        anchor["anchor_type"] = random.choice(["high", "low"])
+    
+    task = anchor["task"]
+    
+    with st.expander("Understanding Anchoring Bias", expanded=False):
+        st.markdown("""
+        **Anchoring Bias** occurs when we rely too heavily on the first piece of information (the "anchor") when making decisions.
+        
+        **How it works**:
+        - Initial number influences subsequent judgments
+        - Happens even when anchor is obviously irrelevant
+        - Affects experts and novices alike
+        
+        **Strategy**: Deliberately consider multiple reference points, question the relevance of initial information.
+        """)
+    
+    st.markdown("### Estimation Challenge")
+    
+    if not anchor["anchor_shown"]:
+        # Show the anchor question first
+        if anchor["anchor_type"] == "high":
+            st.info(task["anchor_high"])
+        else:
+            st.info(task["anchor_low"])
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Greater", key="anchor_greater"):
+                anchor["anchor_shown"] = True
+                st.rerun()
+        with col2:
+            if st.button("Less", key="anchor_less"):
+                anchor["anchor_shown"] = True
+                st.rerun()
+    
+    elif not anchor["completed"]:
+        # Now ask for the actual estimate
+        st.info(task["question"])
+        
+        user_estimate = st.text_input("Your estimate:", key="anchor_input")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Submit Estimate", key="anchor_submit"):
+                anchor["user_estimate"] = user_estimate.strip()
+                anchor["completed"] = True
+                
+                # Record performance
+                elapsed_time = time.time() - anchor["start_time"]
+                
+                try:
+                    user_num = float(user_estimate.replace(",", ""))
+                    correct_num = float(str(task["correct_answer"]).replace(",", ""))
+                    
+                    # Calculate anchor effect (how far from correct answer)
+                    error_percentage = abs(user_num - correct_num) / correct_num * 100
+                    
+                    if not hasattr(S()["daily"], "anchoring_scores"):
+                        S()["daily"]["anchoring_scores"] = []
+                    
+                    S()["daily"]["anchoring_scores"].append({
+                        "date": today_iso(),
+                        "user_estimate": user_num,
+                        "correct_answer": correct_num,
+                        "error_percentage": error_percentage,
+                        "anchor_type": anchor["anchor_type"],
+                        "time_seconds": elapsed_time,
+                        "task_type": task["type"]
+                    })
+                    
+                    mark_completed("anchoring")
+                    save_state()
+                except:
+                    pass
+                
+                st.rerun()
+        
+        with col2:
+            if st.button("Anti-Anchoring Tip", key="anchor_tip"):
+                st.warning("Consider: What would I estimate if I hadn't seen that first number? Think of the highest and lowest reasonable values first.")
+    
+    else:
+        # Show results
+        st.info(task["question"])
+        st.write(f"**Your estimate**: {anchor['user_estimate']}")
+        st.success(f"**Correct answer**: {task['correct_answer']}")
+        
+        try:
+            user_num = float(anchor["user_estimate"].replace(",", ""))
+            correct_num = float(str(task["correct_answer"]).replace(",", ""))
+            error_percentage = abs(user_num - correct_num) / correct_num * 100
+            
+            # Convert error to accuracy score (lower error = higher accuracy)
+            # Perfect estimate (0% error) = 100% accuracy
+            # 50% error = 50% accuracy, 100% error = 0% accuracy
+            accuracy = max(0, 1 - (error_percentage / 100))
+            
+            # Record performance and update difficulty
+            elapsed_time = time.time() - anchor["start_time"]
+            adjustment = update_difficulty("anchoring", accuracy, elapsed_time)
+            
+            if error_percentage < 20:
+                st.success("🎯 Excellent! You resisted the anchoring effect well.")
+                score_emoji = "🔥"
+            elif error_percentage < 50:
+                st.warning("⚠️ Good estimate, but may have been influenced by the anchor.")
+                score_emoji = "👍"
+            else:
+                st.error("📊 Strong anchoring effect detected. The irrelevant number influenced your judgment.")
+                score_emoji = "📈"
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Error percentage", f"{error_percentage:.1f}%")
+            with col2:
+                st.metric("Accuracy Score", f"{accuracy:.1%}")
+            with col3:
+                st.metric("Time taken", f"{elapsed_time:.1f}s")
+            
+            # Show difficulty adjustment
+            if adjustment["adjustment"] == "increased":
+                st.info(f"🔥 Great anchoring resistance! Difficulty increased to level {adjustment['new_level']}")
+            elif adjustment["adjustment"] == "decreased":
+                st.info(f"📉 Difficulty adjusted to level {adjustment['new_level']}")
+            else:
+                st.info(f"🎯 Difficulty maintained at level {adjustment['new_level']}")
+                
+        except:
+            st.error("Invalid number format")
+        
+        st.info(f"**Anchoring bias explanation**: {task['bias_explanation']}")
+        
+        if st.button("Try Another Task", key="anchor_restart"):
+            st.session_state["anchoring"] = None
+            st.rerun()
+    
+    # Show historical performance
+    if hasattr(S()["daily"], "anchoring_scores") and S()["daily"]["anchoring_scores"]:
+        st.markdown("### Recent Performance")
+        recent_scores = S()["daily"]["anchoring_scores"][-10:]
+        
+        avg_error = sum(s["error_percentage"] for s in recent_scores) / len(recent_scores)
+        avg_time = sum(s["time_seconds"] for s in recent_scores) / len(recent_scores)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Avg Error", f"{avg_error:.1f}%")
+        with col2:
+            st.metric("Avg Time", f"{avg_time:.1f}s")
+    
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Anchoring is one of the most robust cognitive biases, discovered by Tversky & Kahneman (1974). Training in anchoring awareness can reduce susceptibility to this bias in negotiation and decision-making contexts (Strack & Mussweiler, 1997; Epley & Gilovich, 2006).")
 
 # ----- Settings -----
 def page_settings():
@@ -3268,6 +4074,10 @@ PAGES = [
     "Complex Span",
     "Go/No-Go",
     "Processing Speed",
+    "KAHNEMAN TRAINING",
+    "CRT",
+    "Base Rate",
+    "Anchoring",
     "ADDITIONAL TRAINING",
     "Mental Math",
     "Writing",
@@ -4081,6 +4891,12 @@ with st.sidebar:
                 page_completed = True
             elif "Forecasts" in page and completion_status.get("forecasts", False):
                 page_completed = True
+            elif "CRT" in page and completion_status.get("crt", False):
+                page_completed = True
+            elif "Base Rate" in page and completion_status.get("base_rate", False):
+                page_completed = True
+            elif "Anchoring" in page and completion_status.get("anchoring", False):
+                page_completed = True
             elif "World Model" in page and (completion_status.get("world_model_a", False) or completion_status.get("world_model_b", False)):
                 page_completed = True
             elif "Topic Study" in page and completion_status.get("topic_study", False):
@@ -4183,6 +4999,9 @@ elif page == "Processing Speed": page_processing_speed()
 elif page == "Mental Math": page_mm()
 elif page == "Writing": page_writing()
 elif page == "Forecasts": page_forecasts()
+elif page == "CRT": page_crt()
+elif page == "Base Rate": page_base_rate()
+elif page == "Anchoring": page_anchoring()
 elif page == "Argument Map": page_argmap()
 elif page == "Settings": page_settings()
 
