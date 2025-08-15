@@ -57,9 +57,31 @@ def load_default_cards():
                 )
                 cards.append(asdict(card))
             return cards
-    except FileNotFoundError:
-        # Fallback to empty list if file not found
-        return []
+    except (FileNotFoundError, UnicodeDecodeError, json.JSONDecodeError) as e:
+        # Fallback to hardcoded cards if file issues
+        return get_fallback_cards()
+
+def get_fallback_cards():
+    """Fallback cards if JSON loading fails"""
+    fallback_data = [
+        {"front":"Expected value (EV)?","back":"Sum of outcomes weighted by probabilities; choose the higher EV if risk-neutral.","tags":["decision"]},
+        {"front":"Base rate — why it matters","back":"It's the prior prevalence; ignoring it leads to base-rate neglect and miscalibration.","tags":["probability"]},
+        {"front":"Sunk cost fallacy antidote","back":"Ignore irrecoverable costs; evaluate the future only.","tags":["debias"]},
+        {"front":"Well-calibrated forecast","back":"Of events you call 70%, approximately 70% happen in the long run.","tags":["forecasting"]},
+        {"front":"Moloch","back":"Metaphor for system-level dynamics that sacrifice individual values for collective failure.","tags":["rationalism","systems"]},
+    ]
+    
+    cards = []
+    for card_data in fallback_data:
+        card = Card(
+            id=new_id(),
+            front=card_data["front"],
+            back=card_data["back"],
+            tags=card_data.get("tags", []),
+            new=True
+        )
+        cards.append(asdict(card))
+    return cards
 
 def detect_mobile():
     """Detect if user is on mobile device"""
