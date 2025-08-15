@@ -1202,40 +1202,55 @@ def page_dashboard():
                     st.write(f"**{len(due_cards_list)} cards due for review:**")
                     for i, card in enumerate(due_cards_list[:5]):  # Show first 5
                         status = "Done" if completed["review"] else "Pending"
-                        st.write(f"{status}: {card.front[:50]}{'...' if len(card.front) > 50 else ''}")
+                        card_text = card.get("front", "Unknown card")[:50]
+                        if len(card.get("front", "")) > 50:
+                            card_text += "..."
+                        if st.button(f"{status}: {card_text}", key=f"card_{i}", use_container_width=True):
+                            st.session_state["page"] = "Spaced Review"
+                            st.rerun()
                     if len(due_cards_list) > 5:
                         st.write(f"... and {len(due_cards_list) - 5} more cards")
+                        if st.button("View All Cards", key="view_all_cards", use_container_width=True):
+                            st.session_state["page"] = "Spaced Review"
+                            st.rerun()
                 else:
                     st.write("No cards due for review today!")
+                    if st.button("Go to Spaced Review", key="go_spaced_review", use_container_width=True):
+                        st.session_state["page"] = "Spaced Review"
+                        st.rerun()
                     
     with col2:
         if st.session_state.show_drills_details:
             with st.expander("Cognitive Drill Tasks", expanded=True):
                 drill_tasks = {
-                    "nback": "Dual N-Back",
-                    "task_switching": "Task Switching", 
-                    "complex_span": "Complex Span",
-                    "gng": "Go/No-Go",
-                    "processing_speed": "Processing Speed"
+                    "nback": ("Dual N-Back", "N-Back"),
+                    "task_switching": ("Task Switching", "Task Switching"), 
+                    "complex_span": ("Complex Span", "Complex Span"),
+                    "gng": ("Go/No-Go", "Go/No-Go"),
+                    "processing_speed": ("Processing Speed", "Processing Speed")
                 }
-                for key, name in drill_tasks.items():
+                for key, (name, page) in drill_tasks.items():
                     status = "Done" if completed[key] else "Pending"
-                    st.write(f"{status}: {name}")
+                    if st.button(f"{status}: {name}", key=f"drill_{key}", use_container_width=True):
+                        st.session_state["page"] = page
+                        st.rerun()
                     
     with col3:
         if st.session_state.show_learning_details:
             with st.expander("Learning Activities", expanded=True):
                 learning_tasks = {
-                    "topic_study": "Topic Study",
-                    "writing": "Writing Exercise",
-                    "forecasts": "Forecasting",
-                    "mental_math": "Mental Math",
-                    "world_model_a": "World Model A",
-                    "world_model_b": "World Model B"
+                    "topic_study": ("Topic Study", "Topic Study"),
+                    "writing": ("Writing Exercise", "Writing"),
+                    "forecasts": ("Forecasting", "Forecasts"),
+                    "mental_math": ("Mental Math", "Mental Math"),
+                    "world_model_a": ("World Model A", "World Model"),
+                    "world_model_b": ("World Model B", "World Model")
                 }
-                for key, name in learning_tasks.items():
+                for key, (name, page) in learning_tasks.items():
                     status = "Done" if completed[key] else "Pending"
-                    st.write(f"{status}: {name}")
+                    if st.button(f"{status}: {name}", key=f"learning_{key}", use_container_width=True):
+                        st.session_state["page"] = page
+                        st.rerun()
 
     # Clean reset button
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -1844,6 +1859,10 @@ def page_nback():
                 st.session_state["nb"] = None
                 st.rerun()
 
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Dual N-Back training has been shown to improve fluid intelligence and working memory capacity (Jaeggi et al., 2008; Au et al., 2015). Studies demonstrate transfer effects to other cognitive tasks and sustained improvements with consistent practice.")
+
 def _nb_mark_visual():
     nb = st.session_state.get("nb")
     if not nb or nb["done"] or nb["i"] == 0:
@@ -2147,6 +2166,11 @@ def _proc_speed_finish():
         
         st.session_state["proc_speed"] = None
         st.rerun()
+
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Processing speed training improves cognitive efficiency and has been linked to better performance on intelligence tests and real-world tasks (Salthouse, 1996; Kail & Salthouse, 1994). Regular practice enhances perceptual speed and reduces cognitive load.")
+
 # ----- Task Switching with Strategy Training -----
 def page_task_switching():
     page_header("Task Switching")
@@ -2375,6 +2399,10 @@ def _task_switch_finish():
         st.session_state["task_switch"] = None
         st.rerun()
 
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Task switching training enhances cognitive flexibility and executive control (Kiesel et al., 2010; Monsell, 2003). Regular practice improves multitasking ability and reduces switch costs in everyday cognitive tasks.")
+
 # ----- Complex Span with Strategy Training -----
 def page_complex_span():
     page_header("Complex Span")
@@ -2526,6 +2554,10 @@ def page_complex_span():
                     st.session_state["cspan"] = None
                     st.rerun()
 
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Complex span tasks are reliable measures of working memory capacity and predict academic performance and fluid intelligence (Conway et al., 2005; Unsworth & Engle, 2007). Training improves working memory span and reasoning abilities.")
+
 def _cspan_next():
     # Helper just to kick the first letter display
     pass
@@ -2664,6 +2696,10 @@ def page_gng():
                 st.session_state["gng"] = None
                 st.rerun()
 
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Go/No-Go tasks assess response inhibition, a key component of executive function (Dillon & Pizzagalli, 2007; Simmonds et al., 2008). Training improves impulse control and has applications in ADHD treatment and addiction therapy.")
+
 # ----- Mental Math -----
 def page_mm():
     page_header("Mental Math")
@@ -2739,6 +2775,10 @@ def page_mm():
             st.session_state["mm"] = None
             if st.button("Restart"):
                 st.rerun()
+
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Mental math training enhances numerical cognition and working memory (Oberauer et al., 2003; Kaufmann et al., 2011). Regular practice improves mathematical fluency and has transfer effects to problem-solving abilities.")
 
 # ----- World-Model Learning -----
 def page_world_model():
@@ -2859,6 +2899,10 @@ def page_world_model():
             track_name = WORLD_MODEL_TRACKS[session["track"]]["name"]
             st.write(f"• {session['date']}: **{session['lesson']}** ({track_name})")
 
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Spaced repetition and active recall significantly improve long-term retention and learning efficiency (Bjork, 1994; Roediger & Karpicke, 2006). Structured knowledge building enhances expert-level understanding and transfer.")
+
 # ----- Enhanced Writing with World-Model Integration -----
 def page_writing():
     page_header("Writing Sprint (12 min)")
@@ -2905,6 +2949,10 @@ def page_writing():
                     save_state()
                     st.session_state["w"] = None
                     st.rerun()
+
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Regular writing practice improves cognitive clarity, working memory, and executive function (Klein & Boals, 2001; Pennebaker & Chung, 2011). Expressive writing has therapeutic benefits and enhances learning consolidation.")
 
 # ----- Forecasts -----
 def page_forecasts():
@@ -2972,6 +3020,10 @@ def reliability_curve(resolved: List[Dict[str, Any]]):
     ax.set_ylabel("Empirical frequency")
     ax.set_title("Forecast calibration")
     st.pyplot(fig)
+
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Forecasting and prediction practice improves metacognitive accuracy and calibration (Tetlock & Gardner, 2015; Mellers et al., 2014). Regular forecasting enhances critical thinking and decision-making under uncertainty.")
 
 def brier_decomposition(resolved: List[Dict[str, Any]]) -> Tuple[float,float,float,float]:
     """Murphy (1973) decomposition: Brier = Reliability - Resolution + Uncertainty"""
