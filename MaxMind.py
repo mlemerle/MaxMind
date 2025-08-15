@@ -368,7 +368,7 @@ def get_performance_feedback(drill: str) -> str:
     target_min, target_max = a["target_min"], a["target_max"]
     
     if avg_recent < target_min:
-        return f"📉 Recent avg: {avg_recent:.1%} - Consider easier level or focus on strategy"
+        return f"Recent avg: {avg_recent:.1%} - Consider easier level or focus on strategy"
     elif avg_recent > target_max:
         return f"Recent avg: {avg_recent:.1%} - Ready for increased difficulty!"
     else:
@@ -386,9 +386,9 @@ def suggest_difficulty_adjustment(drill: str) -> str:
     target_min, target_max = a["target_min"], a["target_max"]
     
     if avg_recent < target_min - 0.05:  # More than 5% below target
-        return "💡 Suggestion: Try an easier level to build confidence"
+        return "Suggestion: Try an easier level to build confidence"
     elif avg_recent > target_max + 0.05:  # More than 5% above target
-        return "💡 Suggestion: Challenge yourself with a harder level"
+        return "Suggestion: Challenge yourself with a harder level"
     
     return ""
 
@@ -1032,10 +1032,51 @@ def page_dashboard():
     # Automatically integrate mastered topics into spaced repetition
     integrated_count = integrate_mastered_topics()
     if integrated_count > 0:
-        st.success(f"🎓 Automatically integrated {integrated_count} mastered topics into spaced repetition!")
+        st.success(f"Automatically integrated {integrated_count} mastered topics into spaced repetition!")
     
     # Get completion status
     completed = get_completion_status()
+    
+    # Daily Progress Bar at the top
+    total_activities = len(completed)
+    completed_count = sum(completed.values())
+    progress_pct = int((completed_count / total_activities) * 100)
+    
+    styles = get_card_styles()
+    progress_gradient = "linear-gradient(90deg, #58a6ff 0%, #238636 100%)" if S().get("settings", {}).get("darkMode", False) else "linear-gradient(90deg, #007aff 0%, #00d4ff 100%)"
+    background_bar = "#21262d" if S().get("settings", {}).get("darkMode", False) else "#f1f5f9"
+    
+    st.markdown(f"""
+    <div style="
+        background: {styles['background']};
+        padding: 1.5rem;
+        border-radius: 16px;
+        border: {styles['border']};
+        box-shadow: {styles['shadow']};
+        margin-bottom: 2rem;
+    ">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div style="font-weight: 600; color: {styles['text_color']};">Today's Progress</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: {styles['accent_color']};">{completed_count}/{total_activities}</div>
+        </div>
+        <div style="
+            background: {background_bar};
+            border-radius: 12px;
+            height: 12px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        ">
+            <div style="
+                background: {progress_gradient};
+                height: 100%;
+                width: {progress_pct}%;
+                border-radius: 12px;
+                transition: width 0.3s ease;
+            "></div>
+        </div>
+        <div style="color: {styles['muted_color']}; font-size: 0.875rem; text-align: center;">{progress_pct}% Complete</div>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Apple-style metrics
     st.markdown("""
@@ -1064,9 +1105,11 @@ def page_dashboard():
             <div style="color: {styles['muted_color']}; font-size: 0.875rem;">cards due</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Start Review", key="review_btn"):
+        if st.button("Start Review", key="review_btn", use_container_width=True):
             st.session_state["page"] = "Spaced Review"
             st.rerun()
+        if st.button("Review Details", key="toggle_review", use_container_width=True):
+            st.session_state.show_review_details = not st.session_state.show_review_details
     
     with col2:
         drill_checks = {
@@ -1092,9 +1135,11 @@ def page_dashboard():
             <div style="color: {styles['muted_color']}; font-size: 0.875rem;">completed today</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Open Drills", key="drills_btn"):
+        if st.button("Open Drills", key="drills_btn", use_container_width=True):
             st.session_state["page"] = "N-Back"
             st.rerun()
+        if st.button("Drill Details", key="toggle_drills", use_container_width=True):
+            st.session_state.show_drills_details = not st.session_state.show_drills_details
     
     with col3:
         other_checks = {
@@ -1127,60 +1172,75 @@ def page_dashboard():
         
         col_topic, col_world = st.columns(2)
         with col_topic:
-            if st.button("� Study Topic", key="topic_btn"):
+            if st.button("Study Topic", key="topic_btn", use_container_width=True):
                 st.session_state["page"] = "Topic Study"
                 st.rerun()
         with col_world:
-            if st.button("🌍 World Model", key="world_btn"):
+            if st.button("World Model", key="world_btn", use_container_width=True):
                 st.session_state["page"] = "World Model"
                 st.rerun()
+        
+        if st.button("Learning Details", key="toggle_learning", use_container_width=True):
+            st.session_state.show_learning_details = not st.session_state.show_learning_details
 
-    # Daily Progress Summary with Apple-style design
-    total_activities = len(completed)
-    completed_count = sum(completed.values())
-    progress_pct = int((completed_count / total_activities) * 100)
+    # Initialize expandable sections state
+    if "show_review_details" not in st.session_state:
+        st.session_state.show_review_details = False
+    if "show_drills_details" not in st.session_state:
+        st.session_state.show_drills_details = False
+    if "show_learning_details" not in st.session_state:
+        st.session_state.show_learning_details = False
+
+    # Expandable details for each section
+    col1, col2, col3 = st.columns(3)
     
-    st.markdown("### Daily Progress")
-    styles = get_card_styles()
-    progress_gradient = "linear-gradient(90deg, #58a6ff 0%, #238636 100%)" if S().get("settings", {}).get("darkMode", False) else "linear-gradient(90deg, #007aff 0%, #00d4ff 100%)"
-    background_bar = "#21262d" if S().get("settings", {}).get("darkMode", False) else "#f1f5f9"
-    
-    st.markdown(f"""
-    <div style="
-        background: {styles['background']};
-        padding: 2rem;
-        border-radius: 16px;
-        border: {styles['border']};
-        box-shadow: {styles['shadow']};
-        margin: 1.5rem 0;
-    ">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <div style="font-weight: 600; color: {styles['text_color']};">Today's Activities</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: {styles['accent_color']};">{completed_count}/{total_activities}</div>
-        </div>
-        <div style="
-            background: {background_bar};
-            border-radius: 12px;
-            height: 12px;
-            overflow: hidden;
-            margin-bottom: 0.5rem;
-        ">
-            <div style="
-                background: {progress_gradient};
-                height: 100%;
-                width: {progress_pct}%;
-                border-radius: 12px;
-                transition: width 0.3s ease;
-            "></div>
-        </div>
-        <div style="color: {styles['muted_color']}; font-size: 0.875rem; text-align: center;">{progress_pct}% Complete</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
+    with col1:
+        if st.session_state.show_review_details:
+            due_cards_list = due_cards(S())
+            with st.expander("Spaced Review Tasks", expanded=True):
+                if due_cards_list:
+                    st.write(f"**{len(due_cards_list)} cards due for review:**")
+                    for i, card in enumerate(due_cards_list[:5]):  # Show first 5
+                        status = "Done" if completed["review"] else "Pending"
+                        st.write(f"{status}: {card.front[:50]}{'...' if len(card.front) > 50 else ''}")
+                    if len(due_cards_list) > 5:
+                        st.write(f"... and {len(due_cards_list) - 5} more cards")
+                else:
+                    st.write("No cards due for review today!")
+                    
+    with col2:
+        if st.session_state.show_drills_details:
+            with st.expander("Cognitive Drill Tasks", expanded=True):
+                drill_tasks = {
+                    "nback": "Dual N-Back",
+                    "task_switching": "Task Switching", 
+                    "complex_span": "Complex Span",
+                    "gng": "Go/No-Go",
+                    "processing_speed": "Processing Speed"
+                }
+                for key, name in drill_tasks.items():
+                    status = "Done" if completed[key] else "Pending"
+                    st.write(f"{status}: {name}")
+                    
+    with col3:
+        if st.session_state.show_learning_details:
+            with st.expander("Learning Activities", expanded=True):
+                learning_tasks = {
+                    "topic_study": "Topic Study",
+                    "writing": "Writing Exercise",
+                    "forecasts": "Forecasting",
+                    "mental_math": "Mental Math",
+                    "world_model_a": "World Model A",
+                    "world_model_b": "World Model B"
+                }
+                for key, name in learning_tasks.items():
+                    status = "Done" if completed[key] else "Pending"
+                    st.write(f"{status}: {name}")
+
     # Clean reset button
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("Reset Daily Progress", key="reset_progress"):
+        if st.button("Reset Daily Progress", key="reset_progress", use_container_width=True):
             for key in S()["daily"]["completed"]:
                 S()["daily"]["completed"][key] = False
             save_state()
@@ -1524,14 +1584,14 @@ def page_topic_study():
             if latest["date"] == today_iso():
                 st.markdown(f"### Today's Topic: {latest['title']}")
                 rating = latest["understanding_rating"]
-                stars = "⭐" * rating + "☆" * (5 - rating)
+                stars = "*" * rating + "-" * (5 - rating)
                 st.write(f"**Your Rating**: {stars} ({rating}/5)")
                 if latest["notes"]:
                     st.write(f"**Your Notes**: {latest['notes']}")
         return
     
     # Display today's topic
-    st.markdown(f"### 📚 Today's Topic: {topic['title']}")
+    st.markdown(f"### Today's Topic: {topic['title']}")
     
     # Topic metadata
     col1, col2, col3 = st.columns(3)
@@ -1549,7 +1609,7 @@ def page_topic_study():
     st.markdown(f"**Overview**: {topic['description']}")
     
     # Main content
-    with st.expander("📖 Study Material", expanded=True):
+    with st.expander("Study Material", expanded=True):
         st.markdown(topic['content'])
     
     # Self-assessment questions
@@ -1557,7 +1617,7 @@ def page_topic_study():
         for i, question in enumerate(topic['questions'], 1):
             st.write(f"**{i}.** {question}")
         
-        st.info("💡 **Tip**: Try to answer these questions mentally before moving on.")
+        st.info("**Tip**: Try to answer these questions mentally before moving on.")
     
     # Applications
     with st.expander("🔧 Real-World Applications"):
@@ -1565,7 +1625,7 @@ def page_topic_study():
             st.write(f"• {app}")
     
     # Completion form
-    st.markdown("### 🎯 Complete Your Study")
+    st.markdown("### Complete Your Study")
     with st.form("complete_topic_study"):
         understanding = st.slider(
             "How well do you understand this topic?", 
@@ -1581,7 +1641,7 @@ def page_topic_study():
         
         if st.form_submit_button("Complete Topic Study"):
             complete_topic_study(topic['key'], understanding, notes)
-            st.success("🎉 Topic study completed! Great work!")
+            st.success("Topic study completed! Great work!")
             st.rerun()
     
     # Study progress
@@ -1598,10 +1658,10 @@ def page_topic_study():
     
     # Recent study history
     if ts.get("study_history"):
-        st.markdown("### 📚 Recent Studies")
+        st.markdown("### Recent Studies")
         recent = ts["study_history"][-5:]  # Last 5 studies
         for study in reversed(recent):
-            rating_stars = "⭐" * study["understanding_rating"] + "☆" * (5 - study["understanding_rating"])
+            rating_stars = "*" * study["understanding_rating"] + "-" * (5 - study["understanding_rating"])
             st.write(f"**{study['date']}**: {study['title']} - {rating_stars}")
     
     # Manual integration option
@@ -1678,7 +1738,7 @@ def page_nback():
     nb = st.session_state["nb"]
     if nb and nb["show_grid"]:
         # Display current strategy
-        st.info(f"🎯 **Current Strategy**: {nb['strategy']}")
+        st.info(f"**Current Strategy**: {nb['strategy']}")
         
         # Display 3x3 grid and audio
         col1, col2 = st.columns([2, 1])
@@ -1694,7 +1754,7 @@ def page_nback():
         # Match buttons
         button_col1, button_col2 = st.columns(2)
         with button_col1:
-            visual_match = st.button("🎯 Visual Match", key="nb_visual_match", help="Click when visual position matches N steps back")
+            visual_match = st.button("Visual Match", key="nb_visual_match", help="Click when visual position matches N steps back")
         with button_col2:
             audio_match = st.button("🔊 Audio Match", key="nb_audio_match", help="Click when audio letter matches N steps back")
         
@@ -1749,7 +1809,7 @@ def page_nback():
             audio_acc = round(nb["audio_hits"] / audio_targets * 100, 1) if audio_targets > 0 else 0
             composite_acc = (visual_acc + audio_acc) / 2
             
-            st.success(f"🎯 **Visual**: {nb['visual_hits']}/{visual_targets} hits, {nb['visual_fa']} false alarms → {visual_acc}%")
+            st.success(f"**Visual**: {nb['visual_hits']}/{visual_targets} hits, {nb['visual_fa']} false alarms → {visual_acc}%")
             st.success(f"🔊 **Audio**: {nb['audio_hits']}/{audio_targets} hits, {nb['audio_fa']} false alarms → {audio_acc}%")
             st.info(f"**Composite Accuracy**: {composite_acc:.1f}%")
             
@@ -1879,7 +1939,7 @@ def page_processing_speed():
     ps = st.session_state["proc_speed"]
     if ps:
         # Display current strategy and progress
-        st.info(f"🎯 **Strategy**: {ps['strategy']} | **Task**: {ps['task_type']} ({ps['difficulty']})")
+        st.info(f"**Strategy**: {ps['strategy']} | **Task**: {ps['task_type']} ({ps['difficulty']})")
         
         # Time remaining
         time_left = max(0, int(ps["end_time"] - now_ts()))
@@ -2065,8 +2125,8 @@ def _proc_speed_finish():
     avg_rt = ps["total_rt"] / max(1, ps["correct_responses"])  # RT for correct responses only
     throughput = ps["trials_completed"] / (ps["duration"] * 60)  # trials per second
     
-    st.success(f"🎯 **Accuracy**: {ps['correct_responses']}/{ps['trials_completed']} ({accuracy:.1f}%)")
-    st.info(f"⚡ **Speed**: {avg_rt:.0f}ms average RT | {throughput:.1f} trials/sec")
+    st.success(f"**Accuracy**: {ps['correct_responses']}/{ps['trials_completed']} ({accuracy:.1f}%)")
+    st.info(f"**Speed**: {avg_rt:.0f}ms average RT | {throughput:.1f} trials/sec")
     st.info(f"**Total Trials**: {ps['trials_completed']} in {ps['duration']} minutes")
     
     # Strategy reflection
@@ -2157,12 +2217,12 @@ def page_task_switching():
     ts = st.session_state["task_switch"]
     if ts and ts["current"]:
         # Display current strategy
-        st.info(f"🎯 **Current Strategy**: {ts['strategy']}")
+        st.info(f"**Current Strategy**: {ts['strategy']}")
         
         # Task instruction
         task = ts["current"]["task"]
         if task == "NUMBER":
-            st.markdown("### 🔢 NUMBER TASK")
+            st.markdown("### NUMBER TASK")
             st.caption("L = Odd number | R = Even number")
         else:
             st.markdown("### 🔤 LETTER TASK") 
@@ -2281,7 +2341,7 @@ def _task_switch_finish():
     switch_cost = repeat_acc - switch_acc  # Switch cost (should be positive)
     
     st.success(f"**Overall**: {ts['correct']}/{total_trials} correct ({overall_acc}%)")
-    st.info(f"⚡ **Speed**: {avg_rt}ms average RT")
+    st.info(f"**Speed**: {avg_rt}ms average RT")
     st.info(f"**Switch Cost**: {switch_cost:.1f}% (Repeat: {repeat_acc}% - Switch: {switch_acc}%)")
     
     # Strategy reflection
@@ -2374,7 +2434,7 @@ def page_complex_span():
     cs = st.session_state["cspan"]
     if cs:
         # Display current strategy
-        st.info(f"🎯 **Current Strategy**: {cs['strategy']}")
+        st.info(f"**Current Strategy**: {cs['strategy']}")
         
         if cs["phase"] == "letters":
             st.markdown(f"### Remember This Letter:")
@@ -2435,7 +2495,7 @@ def page_complex_span():
                 composite = (recall_acc + proc_acc) / 2.0
                 avg_proc_rt = sum(cs["proc_rts"]) / len(cs["proc_rts"]) if cs["proc_rts"] else 0
                 
-                st.success(f"📝 **Recall**: {correct_positions}/{cs['set_size']} correct ({recall_acc*100:.1f}%)")
+                st.success(f"**Recall**: {correct_positions}/{cs['set_size']} correct ({recall_acc*100:.1f}%)")
                 st.success(f"🧮 **Math**: {cs['proc_correct']}/{cs['proc_total']} correct ({proc_acc*100:.1f}%)")
                 st.info(f"**Composite Score**: {composite*100:.1f}%")
                 st.caption(f"Average processing RT: {avg_proc_rt:.0f}ms")
@@ -2518,7 +2578,7 @@ def page_gng():
     g = st.session_state["gng"]
     if g:
         # Display current strategy
-        st.info(f"🎯 **Current Strategy**: {g['strategy']}")
+        st.info(f"**Current Strategy**: {g['strategy']}")
         
         placeholder = st.empty()
         if not g["done"]:
@@ -2538,7 +2598,7 @@ def page_gng():
                 
                 # Give user an opportunity to click during ISI (best-effort in Streamlit)
                 if stim_type == "GO":
-                    btn = st.button("🎯 GO", key=f"go_{g['i']}", help="Click for letters only!")
+                    btn = st.button("GO", key=f"go_{g['i']}", help="Click for letters only!")
                 else:
                     btn = st.button("⛔ (DON'T CLICK)", key=f"go_{g['i']}", disabled=True, help="This is No-Go - don't respond!")
                     btn = False  # Force false for No-Go
@@ -2575,7 +2635,7 @@ def page_gng():
             composite = (hit_rate + (1.0 - fa_rate)) / 2.0
             avg_rt = sum(g["reaction_times"]) / len(g["reaction_times"]) if g["reaction_times"] else 0
             
-            st.success(f"🎯 **Go Trials**: {g['hits']}/{go_total} hits, {g['misses']} misses → Hit Rate: {hit_rate*100:.1f}%")
+            st.success(f"**Go Trials**: {g['hits']}/{go_total} hits, {g['misses']} misses → Hit Rate: {hit_rate*100:.1f}%")
             st.success(f"⛔ **No-Go Trials**: {g['correct_rejections']} correct rejections, {g['fa']} false alarms → Accuracy: {(1-fa_rate)*100:.1f}%")
             st.info(f"**Composite Accuracy**: {composite*100:.1f}%")
             if avg_rt > 0:
@@ -2720,7 +2780,7 @@ def page_world_model():
         completed_today = is_completed_today(activity_key)
         
         with st.container(border=True):
-            status_icon = "✅" if completed_today else "🎯"
+            status_icon = "Done" if completed_today else "Pending"
             st.markdown(f"### {status_icon} Track {'A' if i == 0 else 'B'}: {track_info['name']}")
             st.markdown(f"**Lesson {progress['lesson'] + 1}: {lesson['title']}**")
             
@@ -3011,7 +3071,7 @@ def page_settings():
         s["darkMode"] = new_theme == "Dark"
         s["blackoutMode"] = new_theme == "Blackout" 
         save_state()
-        st.success(f"🎉 Switched to {new_theme} mode! Refreshing...")
+        st.success(f"Switched to {new_theme} mode! Refreshing...")
         st.rerun()
     
     # Theme preview
@@ -3036,7 +3096,7 @@ def page_settings():
     st.markdown("---")
     
     # Card Settings
-    st.markdown("### 📚 Spaced Repetition")
+    st.markdown("### Spaced Repetition")
     nl = st.number_input("Daily new cards", min_value=0, max_value=50, value=s["newLimit"])
     rl = st.number_input("Review limit", min_value=10, max_value=500, value=s["reviewLimit"])
     if st.button("Save Settings"):
@@ -3056,7 +3116,7 @@ def page_settings():
         if up and st.button("Import Now"):
             import_json(up.read().decode("utf-8"))
 
-    st.markdown("### 📊 Statistics")
+    st.markdown("### Statistics")
     cards = S()["cards"]
     total_cards = len(cards)
     learned_cards = len([c for c in cards if not c.get("new")])
@@ -3167,7 +3227,7 @@ PAGES = [
 
 st.set_page_config(
     page_title="Max Mind Trainer", 
-    page_icon="🧠", 
+    page_icon="M", 
     layout="centered",
     initial_sidebar_state="auto"
 )
