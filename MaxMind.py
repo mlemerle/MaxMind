@@ -1375,6 +1375,93 @@ def complete_topic_study(topic_key: str, understanding_rating: int, notes: str =
     mark_completed("topic_study")
     save_state()
 
+def generate_key_terms_from_topic(topic: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Generate key terms and definitions from a topic for flashcard creation"""
+    terms = []
+    topic_title = topic.get('title', '')
+    category = topic.get('category', 'general')
+    content = topic.get('content', '')
+    
+    # Define category-specific key terms
+    category_terms = {
+        "psychology": [
+            {"term": "Cognitive Bias", "definition": "Systematic errors in thinking that affect decisions and judgments"},
+            {"term": "Classical Conditioning", "definition": "Learning process where a neutral stimulus becomes associated with a response"},
+            {"term": "Growth Mindset", "definition": "Belief that abilities can be developed through dedication and hard work"},
+            {"term": "Flow State", "definition": "Mental state of complete immersion and focused motivation in an activity"},
+            {"term": "Cognitive Dissonance", "definition": "Mental discomfort from holding contradictory beliefs or values simultaneously"}
+        ],
+        "neuroscience": [
+            {"term": "Neuroplasticity", "definition": "Brain's ability to reorganize and form new neural connections throughout life"},
+            {"term": "Dopamine", "definition": "Neurotransmitter associated with reward, motivation, and pleasure"},
+            {"term": "Working Memory", "definition": "System for temporarily holding and processing information during cognitive tasks"},
+            {"term": "Prefrontal Cortex", "definition": "Brain region responsible for executive functions, decision-making, and planning"},
+            {"term": "Synaptic Plasticity", "definition": "Ability of synapses to strengthen or weaken over time based on activity"}
+        ],
+        "philosophy": [
+            {"term": "Socratic Method", "definition": "Form of inquiry and discussion using questions to examine ideas and beliefs"},
+            {"term": "Stoicism", "definition": "Philosophy emphasizing virtue, tolerance of pain, and indifference to external circumstances"},
+            {"term": "Existentialism", "definition": "Philosophy focusing on individual existence, freedom, and choice"},
+            {"term": "Virtue Ethics", "definition": "Ethical theory emphasizing character traits rather than actions or consequences"},
+            {"term": "Free Will", "definition": "Ability to make choices unconstrained by prior causes or divine decree"}
+        ],
+        "probability": [
+            {"term": "Bayes' Theorem", "definition": "Formula for updating probability estimates based on new evidence: P(A|B) = P(B|A) × P(A) / P(B)"},
+            {"term": "Base Rate", "definition": "Prior probability of an event before considering new evidence"},
+            {"term": "Expected Value", "definition": "Average outcome of a random variable, calculated as sum of probability × outcome"},
+            {"term": "Monte Carlo", "definition": "Method using random sampling to solve mathematical problems"},
+            {"term": "Conditional Probability", "definition": "Probability of an event occurring given that another event has occurred"}
+        ],
+        "economics": [
+            {"term": "Opportunity Cost", "definition": "Value of the best alternative forgone when making a choice"},
+            {"term": "Network Effects", "definition": "Phenomenon where a product becomes more valuable as more people use it"},
+            {"term": "Game Theory", "definition": "Mathematical framework for analyzing strategic interactions between rational decision-makers"},
+            {"term": "Nash Equilibrium", "definition": "Solution where no player can benefit by changing strategy while others keep theirs unchanged"},
+            {"term": "Behavioral Economics", "definition": "Field combining psychological insights with economic theory"}
+        ],
+        "history": [
+            {"term": "Industrial Revolution", "definition": "Period of major industrialization and technological advancement (late 18th-19th century)"},
+            {"term": "Enlightenment", "definition": "Intellectual movement emphasizing reason, science, and individual rights (17th-18th century)"},
+            {"term": "Renaissance", "definition": "Cultural movement marking transition from medieval to modern Europe (14th-17th century)"},
+            {"term": "Scientific Revolution", "definition": "Period of major advances in scientific thought and methodology (16th-17th century)"},
+            {"term": "Cold War", "definition": "Period of geopolitical tension between US and Soviet Union (1947-1991)"}
+        ],
+        "cognitive_science": [
+            {"term": "System 1 vs System 2", "definition": "Fast, automatic thinking vs. slow, deliberate reasoning (Kahneman's dual-process theory)"},
+            {"term": "Heuristics", "definition": "Mental shortcuts that enable quick decision-making and problem-solving"},
+            {"term": "Metacognition", "definition": "Awareness and understanding of one's own thought processes"},
+            {"term": "Cognitive Load", "definition": "Amount of mental effort used in working memory during learning or problem-solving"},
+            {"term": "Transfer Learning", "definition": "Application of knowledge and skills learned in one context to new situations"}
+        ]
+    }
+    
+    # Get terms for this category
+    if category in category_terms:
+        relevant_terms = category_terms[category][:3]  # Take first 3 most relevant
+        terms.extend(relevant_terms)
+    
+    # Add topic-specific term based on title
+    topic_specific = {
+        "term": topic_title,
+        "definition": topic.get('description', f"Key concept in {category}: {topic_title}")
+    }
+    terms.insert(0, topic_specific)  # Add at beginning
+    
+    # If content mentions specific terms, try to extract them
+    if 'Bayes' in content or 'bayes' in content.lower():
+        if not any(t['term'] == "Bayes' Theorem" for t in terms):
+            terms.append({"term": "Bayes' Theorem", "definition": "P(A|B) = P(B|A) × P(A) / P(B) - updates probability based on new evidence"})
+    
+    if 'network effect' in content.lower():
+        if not any('Network' in t['term'] for t in terms):
+            terms.append({"term": "Network Effects", "definition": "Product becomes more valuable as more people use it"})
+    
+    if 'cognitive load' in content.lower():
+        if not any('Cognitive Load' in t['term'] for t in terms):
+            terms.append({"term": "Cognitive Load", "definition": "Mental effort used in working memory during learning or problem-solving"})
+    
+    return terms[:5]  # Return max 5 terms
+
 def get_topics_for_world_model_integration() -> List[Dict[str, Any]]:
     """Get mastered topics that can be integrated into World Model tracks"""
     state = S()
@@ -1636,8 +1723,46 @@ def page_dashboard():
     # Four main sections with clean dropdown functionality
     col1, col2, col3, col4 = st.columns(4)
     
-    # Section 1: Spaced Learning (includes Review, Topic Study, World Model)
+    # Section 1: Healthy Baseline
     with col1:
+        baseline_activities = ["reading", "meditation", "exercise", "sleep_quality", "hydration", "social_engagement", "nutrition", "sunlight"]
+        baseline_completed = sum(1 for activity in baseline_activities if completed.get(activity, False))
+        all_baseline_complete = baseline_completed == len(baseline_activities)
+        
+        st.markdown(f"""
+        <div style="
+            background: {styles['background']};
+            padding: 1.25rem;
+            border-radius: 12px;
+            border: {styles['border']};
+            box-shadow: {styles['shadow']};
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-bottom: 0.75rem;
+            min-height: 140px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        ">
+            <div style="font-size: 1.25rem; margin-bottom: 0.5rem; color: {'#22c55e' if all_baseline_complete else styles['muted_color']};">{'✓' if all_baseline_complete else '○'}</div>
+            <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem; font-size: 1rem;">Healthy Baseline</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{baseline_completed}/{len(baseline_activities)}</div>
+            <div style="color: {styles['muted_color']}; font-size: 0.8rem;">activities done</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("View Activities", key="toggle_baseline", use_container_width=True):
+            st.session_state.show_baseline_details = not st.session_state.get("show_baseline_details", False)
+            st.rerun()
+        
+        if st.session_state.get("show_baseline_details", False):
+            if st.button("Go to Healthy Baseline", key="baseline_page", use_container_width=True):
+                st.session_state["page"] = "Healthy Baseline"
+                st.rerun()
+
+    # Section 2: Spaced Learning (includes Review, Topic Study, World Model)
+    with col2:
         # Calculate spaced learning completion
         spaced_checks = {
             "review": completed.get("review", False),
@@ -1704,8 +1829,8 @@ def page_dashboard():
                 st.session_state["page"] = "World Model"
                 st.rerun()
 
-    # Section 2: Cognitive Drills
-    with col2:
+    # Section 3: Cognitive Drills
+    with col3:
         drill_checks = {
             "nback": completed.get("nback", False),
             "task_switching": completed.get("task_switching", False), 
@@ -1759,18 +1884,17 @@ def page_dashboard():
                     st.session_state["page"] = page
                     st.rerun()
 
-    # Section 3: Learning Plus (includes Mental Math, Writing, Forecasts, CRT, Base Rate, Anchoring)
-    with col3:
+    # Section 4: Learning Plus (includes Mental Math, Writing, Forecasts, Base Rate, Anchoring)
+    with col4:
         additional_checks = {
             "writing": completed.get("writing", False),
             "forecasts": completed.get("forecasts", False),
             "mental_math": completed.get("mental_math", False),
-            "crt": completed.get("crt", False),
             "base_rate": completed.get("base_rate", False),
             "anchoring": completed.get("anchoring", False)
         }
         additional_completed = sum(1 for v in additional_checks.values() if v)
-        all_additional_complete = additional_completed == 6
+        all_additional_complete = additional_completed == 5
         
         st.markdown(f"""
         <div style="
@@ -1790,7 +1914,7 @@ def page_dashboard():
         ">
             <div style="font-size: 1.25rem; margin-bottom: 0.5rem; color: {'#22c55e' if all_additional_complete else styles['muted_color']};">{'✓' if all_additional_complete else '○'}</div>
             <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem; font-size: 1rem;">Learning Plus</div>
-            <div style="font-size: 1.75rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{additional_completed}/6</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{additional_completed}/5</div>
             <div style="color: {styles['muted_color']}; font-size: 0.8rem;">activities done</div>
         </div>
         """, unsafe_allow_html=True)
@@ -1806,7 +1930,6 @@ def page_dashboard():
                 ("Writing Exercise", "Writing", "writing"),
                 ("Forecasting", "Forecasts", "forecasts"),
                 ("Mental Math", "Mental Math", "mental_math"),
-                ("Cognitive Reflection", "CRT", "crt"),
                 ("Base Rate Training", "Base Rate", "base_rate"),
                 ("Anchoring Resistance", "Anchoring", "anchoring")
             ]
@@ -1816,44 +1939,6 @@ def page_dashboard():
                 if st.button(f"{status_icon} {name}", key=f"additional_{key}", use_container_width=True):
                     st.session_state["page"] = page
                     st.rerun()
-
-    # Section 4: Healthy Baseline
-    with col4:
-        baseline_activities = ["reading", "meditation", "exercise", "sleep_quality", "hydration", "social_engagement", "nutrition", "sunlight"]
-        baseline_completed = sum(1 for activity in baseline_activities if completed.get(activity, False))
-        all_baseline_complete = baseline_completed == len(baseline_activities)
-        
-        st.markdown(f"""
-        <div style="
-            background: {styles['background']};
-            padding: 1.25rem;
-            border-radius: 12px;
-            border: {styles['border']};
-            box-shadow: {styles['shadow']};
-            text-align: center;
-            cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            margin-bottom: 0.75rem;
-            min-height: 140px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        ">
-            <div style="font-size: 1.25rem; margin-bottom: 0.5rem; color: {'#22c55e' if all_baseline_complete else styles['muted_color']};">{'✓' if all_baseline_complete else '○'}</div>
-            <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem; font-size: 1rem;">Healthy Baseline</div>
-            <div style="font-size: 1.75rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{baseline_completed}/{len(baseline_activities)}</div>
-            <div style="color: {styles['muted_color']}; font-size: 0.8rem;">activities done</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        if st.button("View Activities", key="toggle_baseline", use_container_width=True):
-            st.session_state.show_baseline_details = not st.session_state.get("show_baseline_details", False)
-            st.rerun()
-        
-        if st.session_state.get("show_baseline_details", False):
-            if st.button("Go to Healthy Baseline", key="baseline_page", use_container_width=True):
-                st.session_state["page"] = "Healthy Baseline"
-                st.rerun()
 
     # Clean reset button
     st.markdown("---")
@@ -1918,6 +2003,7 @@ def page_dashboard():
             # Generate topic based on selected category
             topic = generate_category_topic(selected_category)
             st.session_state["selected_topic"] = topic
+            st.session_state["selected_category"] = selected_category
             st.rerun()
         
         # Display selected or default topic
@@ -1933,6 +2019,8 @@ def page_dashboard():
                 st.caption(topic['description'])
             with col_button:
                 if st.button("Start Study", key="start_study_btn"):
+                    # Store the current category selection
+                    st.session_state["selected_category"] = selected_category
                     st.session_state["page"] = "Topic Study"
                     st.rerun()
     
@@ -1943,8 +2031,12 @@ def page_review():
     page_header("Spaced Repetition")
     st.caption("Flip → grade: Again/Hard/Good/Easy (SM-2).")
 
-    if "review_queue" not in st.session_state:
-        st.session_state["review_queue"] = [c.copy() for c in due_cards(S())]
+    # Always get fresh due cards and randomize them each time
+    if "review_queue" not in st.session_state or st.button("🔄 Refresh Cards", help="Get fresh randomized cards"):
+        fresh_due_cards = due_cards(S())
+        # Double randomization to ensure proper shuffling
+        random.shuffle(fresh_due_cards)
+        st.session_state["review_queue"] = fresh_due_cards
         st.session_state["current_card"] = None
         st.session_state["show_back"] = False
 
@@ -2194,9 +2286,6 @@ def page_topic_study():
     page_header("Daily Topic Study")
     st.caption("Build your knowledge base with AI-suggested topics that integrate into your World Model.")
     
-    # Get today's suggested topic
-    topic = get_daily_topic_suggestion()
-    
     # Check if already completed today
     if is_completed_today("topic_study"):
         st.success("✅ **Topic study completed for today!**")
@@ -2214,6 +2303,47 @@ def page_topic_study():
                 if latest["notes"]:
                     st.write(f"**Your Notes**: {latest['notes']}")
         return
+
+    # Category selection section
+    st.markdown("### Choose Your Study Topic")
+    
+    topic_categories = [
+        "Psychology", "Neuroscience", "Philosophy", "History", 
+        "Mathematics", "Physics", "Biology", "Computer Science",
+        "Economics", "Literature"
+    ]
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Check if category was selected from dashboard
+        default_category = 0
+        if "selected_category" in st.session_state:
+            try:
+                default_category = topic_categories.index(st.session_state["selected_category"])
+            except ValueError:
+                default_category = 0
+        
+        selected_category = st.selectbox(
+            "Choose a category for today's study topic:",
+            topic_categories,
+            index=default_category,
+            key="topic_study_category_select"
+        )
+    
+    with col2:
+        if st.button("Generate New Topic", key="generate_topic_page"):
+            # Generate topic based on selected category
+            topic = generate_category_topic(selected_category)
+            st.session_state["selected_topic"] = topic
+            st.session_state["selected_category"] = selected_category
+            st.rerun()
+    
+    # Get the topic to display
+    if "selected_topic" in st.session_state:
+        topic = st.session_state["selected_topic"]
+    else:
+        topic = get_daily_topic_suggestion()
     
     # Display today's topic
     st.markdown(f"### Today's Topic: {topic['title']}")
@@ -2222,33 +2352,95 @@ def page_topic_study():
     col1, col2, col3 = st.columns(3)
     with col1:
         difficulty_emoji = {"easy": "🟢", "medium": "🟡", "hard": "🔴"}
-        st.write(f"**Difficulty**: {difficulty_emoji.get(topic['difficulty'], '⚪')} {topic['difficulty'].title()}")
+        difficulty = topic.get('difficulty', 1)
+        if isinstance(difficulty, int):
+            difficulty_text = ["easy", "medium", "hard"][min(difficulty-1, 2)]
+        else:
+            difficulty_text = str(difficulty)
+        st.write(f"**Difficulty**: {difficulty_emoji.get(difficulty_text, '⚪')} {difficulty_text.title()}")
     with col2:
-        st.write(f"**Category**: {topic['category'].title()}")
+        category = topic.get('category', 'General')
+        st.write(f"**Category**: {category.title()}")
     with col3:
         if topic.get("prerequisites"):
             st.write(f"**Prerequisites**: {', '.join(topic['prerequisites'])}")
         else:
             st.write("**Prerequisites**: None")
     
-    st.markdown(f"**Overview**: {topic['description']}")
+    description = topic.get('description', 'A topic to expand your knowledge.')
+    st.markdown(f"**Overview**: {description}")
     
     # Main content
     with st.expander("Study Material", expanded=True):
-        st.markdown(topic['content'])
+        content = topic.get('content', 'Study this topic and expand your understanding.')
+        st.markdown(content)
     
     # Self-assessment questions
     with st.expander("🤔 Check Your Understanding"):
-        for i, question in enumerate(topic['questions'], 1):
+        questions = topic.get('questions', [
+            "What are the key concepts in this topic?",
+            "How does this relate to other topics you've studied?", 
+            "What practical applications can you think of?"
+        ])
+        for i, question in enumerate(questions, 1):
             st.write(f"**{i}.** {question}")
         
         st.info("**Tip**: Try to answer these questions mentally before moving on.")
     
     # Applications
     with st.expander("🔧 Real-World Applications"):
-        for app in topic['applications']:
+        applications = topic.get('applications', [
+            "Critical thinking and problem solving",
+            "Decision making in personal and professional contexts",
+            "Understanding complex systems and relationships"
+        ])
+        for app in applications:
             st.write(f"• {app}")
     
+    # Key Terms for Flashcards
+    with st.expander("📚 Add Key Terms to Flashcards", expanded=False):
+        st.markdown("**Extract important terms from this topic to add to your spaced repetition cards:**")
+        
+        # Generate suggested key terms based on the topic
+        suggested_terms = generate_key_terms_from_topic(topic)
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("**Suggested Terms:**")
+            selected_terms = []
+            
+            for term_data in suggested_terms:
+                term = term_data['term']
+                definition = term_data['definition']
+                if st.checkbox(f"**{term}**", key=f"term_{term}"):
+                    selected_terms.append(term_data)
+                    st.caption(f"*{definition}*")
+        
+        with col2:
+            st.markdown("**Add Custom Term:**")
+            with st.form("add_custom_term"):
+                custom_term = st.text_input("Term/Concept", placeholder="e.g., Bayes' Theorem")
+                custom_definition = st.text_area("Definition", placeholder="P(A|B) = P(B|A) × P(A) / P(B)", height=100)
+                
+                if st.form_submit_button("Add Custom Term"):
+                    if custom_term and custom_definition:
+                        add_card(custom_term, custom_definition, [topic.get('category', 'study').lower()])
+                        st.success(f"Added '{custom_term}' to your flashcards!")
+                        st.rerun()
+        
+        # Add selected terms to flashcards
+        if selected_terms:
+            if st.button(f"Add {len(selected_terms)} Selected Terms to Flashcards", key="add_selected_terms"):
+                for term_data in selected_terms:
+                    add_card(
+                        term_data['term'], 
+                        term_data['definition'], 
+                        [topic.get('category', 'study').lower(), 'key-terms']
+                    )
+                st.success(f"Added {len(selected_terms)} terms to your flashcards!")
+                st.rerun()
+
     # Completion form
     st.markdown("### Complete Your Study")
     with st.form("complete_topic_study"):
@@ -2265,8 +2457,12 @@ def page_topic_study():
         )
         
         if st.form_submit_button("Complete Topic Study"):
-            complete_topic_study(topic['key'], understanding, notes)
+            topic_key = topic.get('key', f"topic_{today_iso()}")
+            complete_topic_study(topic_key, understanding, notes)
             st.success("Topic study completed! Great work!")
+            # Clear the selected topic so a new one will be generated tomorrow
+            if "selected_topic" in st.session_state:
+                del st.session_state["selected_topic"]
             st.rerun()
     
     # Study progress
@@ -2410,6 +2606,19 @@ def page_nback():
                         f"<div style='font-size: 48px; text-align: center; color: #2E8B57; font-weight: bold; padding: 20px; border: 2px solid #2E8B57; border-radius: 10px;'>{current_audio}</div>",
                         unsafe_allow_html=True
                     )
+                    
+                    # Add audio playback using HTML5 speech synthesis
+                    st.markdown(f"""
+                    <script>
+                    if ('speechSynthesis' in window) {{
+                        var utterance = new SpeechSynthesisUtterance('{current_audio}');
+                        utterance.rate = 1.2;
+                        utterance.volume = 0.8;
+                        utterance.pitch = 1.0;
+                        speechSynthesis.speak(utterance);
+                    }}
+                    </script>
+                    """, unsafe_allow_html=True)
                 
                 # Progress info
                 st.caption(f"Trial {nb['i']+1}/{nb['trials']} | Visual: Pos {current_visual+1} | Audio: {current_audio}")
@@ -3660,11 +3869,16 @@ def page_writing():
         "How do leverage points in systems thinking help us create change effectively?",
     ]
     
+    # Get consistent daily prompt
+    daily_seed = hash(today_iso()) % len(prompts)
+    daily_prompt = prompts[daily_seed]
+    
     colA, colB = st.columns([1,2])
     with colA:
-        ptxt = st.text_area("Prompt", value=random.choice(prompts), height=100)
+        ptxt = st.text_area("Today's Prompt", value=daily_prompt, height=100, disabled=True)
+        st.caption("💡 This prompt stays the same all day")
         if st.button("Start 12-min"):
-            st.session_state["w"] = {"end": now_ts() + 12*60, "prompt": ptxt, "text": ""}
+            st.session_state["w"] = {"end": now_ts() + 12*60, "prompt": daily_prompt, "text": ""}
             st.rerun()
         if st.session_state["w"]:
             left = int(st.session_state["w"]["end"] - now_ts())
@@ -4251,9 +4465,70 @@ def page_anchoring():
     
     anchor = st.session_state["anchoring"]
     
-    # Get daily anchoring task
+    # Enhanced daily anchoring tasks with Fermi estimation problems
+    daily_tasks = [
+        {
+            "type": "classic_anchoring",
+            "anchor_high": "Do you think the population of Chicago is greater or less than 8 million?",
+            "anchor_low": "Do you think the population of Chicago is greater or less than 1 million?",
+            "question": "What is the population of Chicago?",
+            "correct_answer": "2,700,000",
+            "explanation": "Chicago has approximately 2.7 million people."
+        },
+        {
+            "type": "fermi_estimation",
+            "anchor_high": "Do you think there are more or less than 50 million lightbulbs in New York City?",
+            "anchor_low": "Do you think there are more or less than 500,000 lightbulbs in New York City?",
+            "question": "Estimate: How many lightbulbs are there in New York City?",
+            "correct_answer": "15,000,000",
+            "explanation": "Rough calculation: ~8M people, ~3M households/businesses, ~5 bulbs per unit = ~15M lightbulbs"
+        },
+        {
+            "type": "fermi_estimation", 
+            "anchor_high": "Do you think a typical car weighs more or less than 5,000 pounds?",
+            "anchor_low": "Do you think a typical car weighs more or less than 1,000 pounds?",
+            "question": "What is the weight of an average passenger car?",
+            "correct_answer": "3,200",
+            "explanation": "Average passenger car weighs about 3,200 pounds (1,450 kg)"
+        },
+        {
+            "type": "fermi_estimation",
+            "anchor_high": "Are there more or less than 10,000 piano tuners in the United States?",
+            "anchor_low": "Are there more or less than 100 piano tuners in the United States?",
+            "question": "How many piano tuners are there in the United States?",
+            "correct_answer": "2,000",
+            "explanation": "Classic Fermi problem: ~330M people, ~20% have pianos, tune 2x/year, 1 tuner services ~1,000 pianos/year"
+        },
+        {
+            "type": "business_estimation",
+            "anchor_high": "Does McDonald's serve more or less than 200 million customers per day globally?",
+            "anchor_low": "Does McDonald's serve more or less than 10 million customers per day globally?",
+            "question": "How many customers does McDonald's serve per day worldwide?",
+            "correct_answer": "70,000,000",
+            "explanation": "McDonald's serves approximately 70 million customers daily across 40,000+ restaurants"
+        },
+        {
+            "type": "geographic_estimation",
+            "anchor_high": "Is the distance from New York to Los Angeles more or less than 5,000 miles?",
+            "anchor_low": "Is the distance from New York to Los Angeles more or less than 1,500 miles?",
+            "question": "What is the distance from New York City to Los Angeles?",
+            "correct_answer": "2,800",
+            "explanation": "The distance from NYC to LA is approximately 2,800 miles (4,500 km)"
+        },
+        {
+            "type": "market_estimation",
+            "anchor_high": "Is the global coffee market worth more or less than $500 billion per year?",
+            "anchor_low": "Is the global coffee market worth more or less than $50 billion per year?",
+            "question": "What is the value of the global coffee market per year?",
+            "correct_answer": "100,000,000,000",
+            "explanation": "The global coffee market is valued at approximately $100 billion annually"
+        }
+    ]
+    
+    # Get daily task based on date
     if not anchor["task"]:
-        anchor["task"] = get_daily_content("anchoring")
+        daily_seed = hash(today_iso()) % len(daily_tasks)
+        anchor["task"] = daily_tasks[daily_seed]
         # Randomly assign high or low anchor
         anchor["anchor_type"] = random.choice(["high", "low"])
     
@@ -4723,11 +4998,10 @@ PAGES = [
     "Complex Span",
     "Go/No-Go",
     "Processing Speed",
-    "ADDITIONAL LEARNING",
+    "LEARNING PLUS",
     "Mental Math",
     "Writing",
     "Forecasts",
-    "CRT",
     "Base Rate",
     "Anchoring",
     "Argument Map",
@@ -5613,8 +5887,6 @@ with st.sidebar:
                 page_completed = True
             elif "Forecasts" in page and completion_status.get("forecasts", False):
                 page_completed = True
-            elif "CRT" in page and completion_status.get("crt", False):
-                page_completed = True
             elif "Base Rate" in page and completion_status.get("base_rate", False):
                 page_completed = True
             elif "Anchoring" in page and completion_status.get("anchoring", False):
@@ -5695,9 +5967,9 @@ with st.sidebar:
                 border-radius: 8px !important;
                 font-weight: {"700" if is_current else "500"} !important;
                 font-size: 0.9rem !important;
-                padding: 0.5rem 1rem !important;
-                margin-bottom: 0.25rem !important;
-                transition: all 0.2s ease !important;
+                padding: 0.25rem 0.5rem !important;
+                margin-bottom: 0.1rem !important;
+                transition: all 0.1s ease !important;
                 width: 100% !important;
             }}
             button[data-testid="baseButton-secondary"][title="{page}"]:hover {{
@@ -5724,7 +5996,6 @@ elif page == "Processing Speed": page_processing_speed()
 elif page == "Mental Math": page_mm()
 elif page == "Writing": page_writing()
 elif page == "Forecasts": page_forecasts()
-elif page == "CRT": page_crt()
 elif page == "Base Rate": page_base_rate()
 elif page == "Anchoring": page_anchoring()
 elif page == "Argument Map": page_argmap()
