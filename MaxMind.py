@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 
 import streamlit as st
+import numpy as np
 from graphviz import Digraph
 import matplotlib.pyplot as plt
 
@@ -30,7 +31,7 @@ def get_ai_api_key():
 def setup_ai_configuration():
     """Setup AI configuration in sidebar with persistent browser storage"""
     with st.sidebar:
-        with st.expander("AI Configuration", expanded=not get_ai_api_key()):
+        with st.expander("AI Configuration", expanded=False):
             st.markdown("### AI Content Generation")
             
             # Always show user input option
@@ -85,7 +86,7 @@ def setup_ai_configuration():
                 return False
 
 def generate_ai_content(prompt: str):
-    """Generate AI content using OpenAI"""
+    """Generate AI content using OpenAI with error handling"""
     api_key = get_ai_api_key()
     if not api_key:
         return "AI content requires API key configuration."
@@ -95,14 +96,46 @@ def generate_ai_content(prompt: str):
         client = openai.OpenAI(api_key=api_key)
         
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # Use the cheaper model
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=800,
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are an educational content generator. Create engaging, informative content suitable for adult learners."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
             temperature=0.7
         )
-        return response.choices[0].message.content
+        
+        return response.choices[0].message.content.strip()
+        
     except Exception as e:
-        return f"AI generation error: {str(e)}"
+        error_msg = str(e)
+        if "quota" in error_msg.lower() or "insufficient" in error_msg.lower():
+            return f"""**API Quota Exceeded**
+
+Unfortunately, the OpenAI API quota has been exceeded. Here's a fallback topic for today:
+
+**Topic**: {generate_fallback_topic_content()}
+
+*Note: Add your own OpenAI API key in the sidebar to enable AI-generated content, or continue with the manual topic selection.*"""
+        else:
+            return f"AI generation error: {error_msg}"
+
+def generate_fallback_topic_content():
+    """Generate fallback content when AI is unavailable"""
+    fallback_topics = [
+        "The Philosophy of Scientific Progress - How do we determine when one scientific theory is better than another?",
+        "Cognitive Biases in Decision Making - Why do intelligent people make predictably irrational choices?", 
+        "The Network Effects of Technology - How do platforms become dominant and what are the implications?",
+        "Emergence in Complex Systems - How do simple rules create complex behaviors in nature and society?",
+        "The Psychology of Expertise - What separates true experts from novices in any field?",
+        "Economic Incentives and Human Behavior - How do market structures shape individual and collective actions?",
+        "The History of Ideas - How do intellectual movements spread and transform societies?",
+        "Metacognition and Learning - How can we improve our ability to learn and think about thinking?",
+        "Political Economy and Institutional Design - Why do some institutions succeed while others fail?",
+        "The Epistemology of Knowledge - How do we know what we know, and what are the limits of human understanding?"
+    ]
+    
+    return random.choice(fallback_topics)
 
 def generate_category_topic(category: str):
     """Generate AI-powered topic for Topic Study page"""
@@ -245,6 +278,44 @@ except ImportError:
     STORAGE_AVAILABLE = False
 
 # ========== Utilities ==========
+def parse_number_flexible(text):
+    """Parse various number formats flexibly"""
+    if not text:
+        return None
+    
+    # Clean the text
+    text = str(text).strip()
+    
+    # Remove common formatting
+    text = text.replace(",", "")  # Remove commas
+    text = text.replace("$", "")  # Remove dollar signs
+    text = text.replace("%", "")  # Remove percentage signs
+    text = text.replace(" ", "")  # Remove spaces
+    
+    # Handle billion, million, thousand suffixes
+    multipliers = {
+        'billion': 1_000_000_000, 'b': 1_000_000_000,
+        'million': 1_000_000, 'm': 1_000_000,
+        'thousand': 1_000, 'k': 1_000,
+        'hundred': 100, 'h': 100
+    }
+    
+    text_lower = text.lower()
+    multiplier = 1
+    
+    for suffix, mult in multipliers.items():
+        if text_lower.endswith(suffix):
+            text = text_lower[:-len(suffix)]
+            multiplier = mult
+            break
+    
+    try:
+        # Try to parse as float
+        number = float(text) * multiplier
+        return number
+    except ValueError:
+        return None
+
 def today_iso() -> str:
     return date.today().isoformat()
 
@@ -260,6 +331,124 @@ def new_id() -> str:
 def timer_text(seconds_left: int) -> str:
     m, s = divmod(max(0, seconds_left), 60)
     return f"{m:02d}:{s:02d}"
+
+def evaluate_writing_with_ai(prompt, text):
+    """Evaluate writing using OpenAI API and provide structured feedback"""
+    api_key = get_ai_api_key()
+    if not api_key:
+        return {
+            "error": "OpenAI API not available",
+            "fallback_rating": "N/A",
+            "fallback_feedback": "AI evaluation requires OpenAI API key. Manual self-reflection: Consider clarity, structure, evidence use, and logical flow."
+        }
+    
+    try:
+        import openai
+        client = openai.OpenAI(api_key=api_key)
+        
+        evaluation_prompt = f"""
+        Please evaluate this writing piece on the following criteria and provide a structured response:
+
+        **Prompt**: {prompt}
+
+        **Written Response**: {text}
+
+        Please provide:
+        1. Overall Score (1-10): Rate the overall quality and effectiveness
+        2. Clarity & Structure (1-10): How well organized and clear is the writing?
+        3. Depth of Thinking (1-10): How deeply does the writer engage with the topic?
+        4. Evidence & Examples (1-10): How well does the writer use examples and evidence?
+        5. Areas for Improvement: 3 specific, actionable suggestions
+        6. Strengths: 2-3 things the writer did well
+
+        Format your response as:
+        OVERALL_SCORE: [1-10]
+        CLARITY_SCORE: [1-10] 
+        DEPTH_SCORE: [1-10]
+        EVIDENCE_SCORE: [1-10]
+        
+        STRENGTHS:
+        - [strength 1]
+        - [strength 2]
+        
+        IMPROVEMENTS:
+        - [improvement 1]
+        - [improvement 2] 
+        - [improvement 3]
+        
+        DETAILED_FEEDBACK:
+        [2-3 sentences of specific feedback about the content and structure]
+        """
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are an expert writing coach focused on clear thinking and structured communication. Provide constructive, specific feedback."},
+                {"role": "user", "content": evaluation_prompt}
+            ],
+            max_tokens=800,
+            temperature=0.3
+        )
+        
+        evaluation_text = response.choices[0].message.content
+        
+        # Parse the structured response
+        lines = evaluation_text.split('\n')
+        result = {
+            "overall_score": 0,
+            "clarity_score": 0, 
+            "depth_score": 0,
+            "evidence_score": 0,
+            "strengths": [],
+            "improvements": [],
+            "detailed_feedback": "",
+            "raw_response": evaluation_text
+        }
+        
+        current_section = None
+        for line in lines:
+            line = line.strip()
+            if line.startswith("OVERALL_SCORE:"):
+                try:
+                    result["overall_score"] = int(line.split(":")[1].strip())
+                except:
+                    pass
+            elif line.startswith("CLARITY_SCORE:"):
+                try:
+                    result["clarity_score"] = int(line.split(":")[1].strip())
+                except:
+                    pass
+            elif line.startswith("DEPTH_SCORE:"):
+                try:
+                    result["depth_score"] = int(line.split(":")[1].strip())
+                except:
+                    pass
+            elif line.startswith("EVIDENCE_SCORE:"):
+                try:
+                    result["evidence_score"] = int(line.split(":")[1].strip())
+                except:
+                    pass
+            elif line.startswith("STRENGTHS:"):
+                current_section = "strengths"
+            elif line.startswith("IMPROVEMENTS:"):
+                current_section = "improvements"
+            elif line.startswith("DETAILED_FEEDBACK:"):
+                current_section = "feedback"
+            elif line.startswith("- ") and current_section == "strengths":
+                result["strengths"].append(line[2:])
+            elif line.startswith("- ") and current_section == "improvements":
+                result["improvements"].append(line[2:])
+            elif current_section == "feedback" and line:
+                result["detailed_feedback"] += line + " "
+        
+        return result
+        
+    except Exception as e:
+        return {
+            "error": f"AI evaluation failed: {str(e)}",
+            "fallback_rating": "Self-Assessment Needed",
+            "fallback_feedback": "Consider: Was your argument clear? Did you use good examples? How could you structure your thoughts better?"
+        }
 
 # ========== Adaptive Difficulty System ==========
 def update_difficulty(activity: str, accuracy: float, time_taken: float = None):
@@ -2049,7 +2238,7 @@ def page_dashboard():
     
     styles = get_card_styles()
     
-    # Progress bar styling without emojis
+    # Progress bar styling
     if progress_pct == 100:
         progress_gradient = "linear-gradient(90deg, #FFD700 0%, #FFA500 50%, #FFD700 100%)"
         progress_text_color = "#000000"
@@ -2181,24 +2370,24 @@ def page_dashboard():
             
             # Review (with cards due count)
             dc = len(due_cards(S()))
-            status_icon = "✅" if completed.get("review", False) else "⭕"
+            status_icon = "✅" if completed.get("review", False) else "•"
             if st.button(f"{status_icon} Spaced Review ({dc} cards)", key="spaced_review", use_container_width=True):
                 st.session_state["page"] = "Spaced Review"
                 st.rerun()
             
             # Topic Study
-            status_icon = "✅" if completed.get("topic_study", False) else "⭕"
+            status_icon = "✅" if completed.get("topic_study", False) else "•"
             if st.button(f"{status_icon} Topic Study", key="spaced_topic", use_container_width=True):
                 st.session_state["page"] = "Topic Study"
                 st.rerun()
             
             # World Model A & B
-            status_icon = "✅" if completed.get("world_model_a", False) else "⭕"
+            status_icon = "✅" if completed.get("world_model_a", False) else "•"
             if st.button(f"{status_icon} World Model A", key="spaced_wm_a", use_container_width=True):
                 st.session_state["page"] = "World Model"
                 st.rerun()
             
-            status_icon = "✅" if completed.get("world_model_b", False) else "⭕"
+            status_icon = "✅" if completed.get("world_model_b", False) else "•"
             if st.button(f"{status_icon} World Model B", key="spaced_wm_b", use_container_width=True):
                 st.session_state["page"] = "World Model"
                 st.rerun()
@@ -2245,7 +2434,7 @@ def page_dashboard():
             st.markdown("**Cognitive Drill Tasks**")
             
             drill_activities = [
-                ("Dual N-Back", "N-Back", "nback"),
+                ("Visual N-Back", "N-Back", "nback"),
                 ("Task Switching", "Task Switching", "task_switching"),
                 ("Complex Span", "Complex Span", "complex_span"),
                 ("Go/No-Go", "Go/No-Go", "gng"),
@@ -2253,7 +2442,7 @@ def page_dashboard():
             ]
             
             for name, page, key in drill_activities:
-                status_icon = "✅" if completed.get(key, False) else "⭕"
+                status_icon = "✅" if completed.get(key, False) else ""
                 if st.button(f"{status_icon} {name}", key=f"drill_{key}", use_container_width=True):
                     st.session_state["page"] = page
                     st.rerun()
@@ -2309,7 +2498,7 @@ def page_dashboard():
             ]
             
             for name, page, key in additional_activities:
-                status_icon = "✅" if completed.get(key, False) else "⭕"
+                status_icon = "✅" if completed.get(key, False) else "•"
                 if st.button(f"{status_icon} {name}", key=f"additional_{key}", use_container_width=True):
                     st.session_state["page"] = page
                     st.rerun()
@@ -2705,7 +2894,13 @@ def page_topic_study():
         with st.container(border=True):
             st.markdown(f"**Today's Topic: {topic['topic']}**")
             st.markdown(f"*Domain: {topic['domain'].replace('_', ' ').title()}* | *Level {topic['level']}*")
-            st.info(topic['description'])
+            
+            # Handle AI-generated vs fallback content
+            if isinstance(topic['description'], str) and topic['description'].startswith("**API Quota Exceeded**"):
+                st.warning(topic['description'])
+            else:
+                st.info(topic['description'])
+                
             st.caption(f"Duration: {topic['suggested_duration']} | Objective: {topic['learning_objective']}")
             
             # Action buttons
@@ -2726,28 +2921,55 @@ def page_topic_study():
                     st.rerun()
     
     with col2:
-        st.markdown("**Change Domain:**")
+        st.markdown("**Available Domains:**")
         
-        # Domain options
-        domains = list(S().get("topic_suggestions", {}).get("knowledge_domains", {}).keys())
-        if not domains:
-            domains = ["philosophy", "neuroscience", "psychology", "economics"]
+        # Comprehensive domain options with descriptions
+        domain_descriptions = {
+            "philosophy": "Fundamental questions about existence, knowledge, values",
+            "history": "Human civilizations, events, and cultural evolution", 
+            "neuroscience": "Brain structure, function, and cognitive processes",
+            "psychology": "Human behavior, mind, and mental processes",
+            "economics": "Markets, trade, resource allocation, and decision-making",
+            "political_science": "Government, politics, and power structures",
+            "cognitive_science": "How minds process information and learn",
+            "systems_thinking": "Complex systems, feedback loops, and emergence",
+            "decision_theory": "Rational choice, uncertainty, and optimization",
+            "epistemology": "Nature of knowledge, truth, and justified belief"
+        }
         
-        domain_options = ["Random"] + [d.replace('_', ' ').title() for d in domains]
-        current_selection = st.selectbox("Choose Domain:", domain_options, 
-                                       index=domain_options.index(selected_domain) if selected_domain in domain_options else 0)
+        # Show current domain preference
+        today_key = f"domain_preference_{today_iso()}"
+        current_selection = st.session_state.get(today_key, "Random")
         
-        if st.button("Get New Topic", key="new_daily_topic"):
-            # Update domain preference and generate new topic
-            st.session_state[today_key] = current_selection
+        domain_options = ["Random"] + [f"{desc}" for desc in domain_descriptions.values()]
+        domain_keys = ["Random"] + list(domain_descriptions.keys())
+        
+        # Find current index
+        try:
+            current_idx = domain_keys.index(current_selection) if current_selection in domain_keys else 0
+        except:
+            current_idx = 0
             
-            if current_selection == "Random":
+        selected_idx = st.selectbox(
+            "Choose learning focus:", 
+            range(len(domain_options)),
+            format_func=lambda x: domain_options[x],
+            index=current_idx
+        )
+        
+        selected_domain = domain_keys[selected_idx]
+        
+        if st.button("Get New Topic", key="new_daily_topic", use_container_width=True):
+            # Update domain preference and generate new topic
+            st.session_state[today_key] = selected_domain
+            
+            if selected_domain == "Random":
                 new_topic = generate_intelligent_topic()
             else:
-                domain_key = current_selection.lower().replace(' ', '_')
-                new_topic = generate_intelligent_topic(domain_key)
+                new_topic = generate_intelligent_topic(selected_domain)
             
             st.session_state[daily_topic_key] = new_topic
+            st.success(f"Generated new topic in {new_topic['domain'].replace('_', ' ').title()}!")
             st.rerun()
     
     # Domain Progress Overview
@@ -2784,6 +3006,42 @@ def page_topic_study():
     
     st.markdown(f"**Learning Objective**: {topic['learning_objective']}")
     
+    # External References Section
+    st.markdown("### 📚 External References")
+    with st.expander("Research Papers, Videos & Resources", expanded=True):
+        if st.button("Find External References", key="generate_references"):
+            with st.spinner("Finding top papers, videos, and resources..."):
+                references = generate_ai_content(
+                    f"Find the most authoritative and helpful external references for learning about: {topic['topic']} in {topic['domain']}. "
+                    f"Provide: 1) 3-5 top research papers or academic articles (with specific titles and authors if possible), "
+                    f"2) 2-3 excellent YouTube videos or educational channels, "
+                    f"3) 2-3 high-quality websites or online resources, "
+                    f"4) 1-2 recommended books for deeper study. "
+                    f"Format clearly with sections and include brief descriptions of why each resource is valuable."
+                )
+                st.session_state[f"references_{daily_topic_key}"] = references
+                st.rerun()
+        
+        references_key = f"references_{daily_topic_key}"
+        if references_key in st.session_state:
+            st.markdown(st.session_state[references_key])
+            st.info("💡 **Tip**: Use these references to deepen your understanding after completing the basic study material.")
+        else:
+            # Default references while AI content loads
+            st.markdown("""
+            **Academic Sources:**
+            • Search Google Scholar for peer-reviewed papers on this topic
+            • Check your local university library for academic journals
+            
+            **Video Resources:**
+            • YouTube educational channels like Khan Academy, Coursera, TED-Ed
+            • MIT OpenCourseWare and Stanford Online lectures
+            
+            **Web Resources:**
+            • Wikipedia for basic overviews and further reading links
+            • Professional association websites in the relevant field
+            """)
+    
     # Generate detailed content using AI
     if st.button("Generate Study Material", key="generate_content"):
         with st.spinner("Generating comprehensive study material..."):
@@ -2807,7 +3065,8 @@ def page_topic_study():
             if st.button("Generate Practice Questions", key="generate_questions"):
                 questions = generate_ai_content(
                     f"Create 5 thoughtful questions to test understanding of: {topic['topic']}. "
-                    f"Include a mix of conceptual, application, and analytical questions."
+                    f"Include a mix of conceptual, application, and analytical questions. "
+                    f"Format as numbered list with clear, specific questions."
                 )
                 st.session_state[f"questions_{daily_topic_key}"] = questions
                 st.rerun()
@@ -2815,22 +3074,214 @@ def page_topic_study():
             questions_key = f"questions_{daily_topic_key}"
             if questions_key in st.session_state:
                 st.markdown(st.session_state[questions_key])
+                st.info("**Tip**: Try to answer these questions mentally before moving on.")
         
-        # Key Terms for Flashcards
+        # Real-World Applications
+        with st.expander("Real-World Applications"):
+            if st.button("Generate Applications", key="generate_applications"):
+                applications = generate_ai_content(
+                    f"List 5-7 practical, real-world applications of: {topic['topic']}. "
+                    f"Include specific examples from daily life, professional contexts, and decision-making scenarios. "
+                    f"Format as bullet points with clear, actionable examples."
+                )
+                st.session_state[f"applications_{daily_topic_key}"] = applications
+                st.rerun()
+            
+            applications_key = f"applications_{daily_topic_key}"
+            if applications_key in st.session_state:
+                st.markdown(st.session_state[applications_key])
+            else:
+                # Default applications while AI generates custom ones
+                st.markdown("""
+                • **Critical thinking and problem solving** in complex situations
+                • **Decision making** in personal and professional contexts  
+                • **Understanding systems and relationships** in your environment
+                • **Improved communication** when discussing related concepts
+                • **Enhanced learning** in related academic or professional areas
+                """)
+        
+        # Enhanced Flashcard Integration
+        with st.expander("Create Flashcards from This Topic"):
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                if st.button("Auto-Extract Key Terms", key="auto_extract_terms"):
+                    with st.spinner("Extracting key terms and definitions..."):
+                        terms_content = generate_ai_content(
+                            f"Extract 6-8 key terms and concepts from the topic: {topic['topic']}. "
+                            f"For each term, provide a clear, concise definition suitable for flashcards. "
+                            f"Format exactly as: TERM | DEFINITION (one per line, using | as separator)"
+                        )
+                        
+                        # Parse the AI response and create individual flashcards
+                        if terms_content:
+                            lines = terms_content.strip().split('\n')
+                            created_count = 0
+                            
+                            for line in lines:
+                                if '|' in line:
+                                    parts = line.split('|', 1)
+                                    if len(parts) == 2:
+                                        term = parts[0].strip()
+                                        definition = parts[1].strip()
+                                        
+                                        # Clean up formatting
+                                        term = term.replace('**', '').replace('*', '').strip()
+                                        definition = definition.replace('**', '').replace('*', '').strip()
+                                        
+                                        if term and definition:
+                                            add_card(term, definition, [topic['domain'], 'topic-study', 'ai-generated'])
+                                            created_count += 1
+                            
+                            if created_count > 0:
+                                st.success(f"✅ Created {created_count} flashcards from key terms!")
+                                st.info("Visit the Spaced Repetition page to study these cards.")
+                            else:
+                                st.warning("Could not extract terms in the expected format. Try manual entry below.")
+                        st.rerun()
+                
+                # Manual flashcard creation
+                st.markdown("**Manual Flashcard Creation:**")
+                with st.form("manual_flashcard"):
+                    term = st.text_input("Term/Concept", placeholder="e.g., Cognitive Bias")
+                    definition = st.text_area("Definition/Explanation", 
+                                            placeholder="e.g., Systematic errors in thinking that affect decisions and judgments",
+                                            height=80)
+                    
+                    if st.form_submit_button("Add to Flashcards"):
+                        if term.strip() and definition.strip():
+                            add_card(term.strip(), definition.strip(), [topic['domain'], 'topic-study', 'manual'])
+                            st.success(f"✅ Added '{term}' to your flashcards!")
+                            st.rerun()
+                        else:
+                            st.error("Please fill in both term and definition")
+            
+            with col2:
+                st.markdown("**Quick Actions:**")
+                
+                # Study existing related cards
+                if st.button("Study Related Cards", key="study_related"):
+                    domain_cards = [card for card in S()["cards"] 
+                                  if topic['domain'] in card.get('tags', [])]
+                    
+                    if domain_cards:
+                        st.info(f"Found {len(domain_cards)} related cards in {topic['domain']} domain")
+                        st.caption("Go to Spaced Repetition to study them!")
+                    else:
+                        st.info("No existing cards found. Create some above!")
+                
+                # Export topic summary
+                if st.button("Export Topic Summary", key="export_summary"):
+                    summary = f"""# {topic['topic']}
+                    
+**Domain**: {topic['domain'].replace('_', ' ').title()}
+**Level**: {topic['level']}
+**Learning Objective**: {topic['learning_objective']}
+
+## Study Material
+{st.session_state.get(content_key, 'Generate study material first')}
+
+## Practice Questions  
+{st.session_state.get(questions_key, 'Generate questions first')}
+
+## Applications
+{st.session_state.get(applications_key, 'Generate applications first')}
+
+---
+*Generated by MaxMind Training on {today_iso()}*
+"""
+                    st.download_button(
+                        "📄 Download Summary",
+                        summary,
+                        f"{topic['topic'].replace(' ', '_')}_summary.md",
+                        "text/markdown"
+                    )
+                applications = generate_ai_content(
+                    f"Identify 5-7 practical, real-world applications of: {topic['topic']}. "
+                    f"Include specific examples from different domains like business, technology, "
+                    f"personal development, society, and daily life. Format as bullet points."
+                )
+                st.session_state[f"applications_{daily_topic_key}"] = applications
+                st.rerun()
+            
+            applications_key = f"applications_{daily_topic_key}"
+            if applications_key in st.session_state:
+                st.markdown(st.session_state[applications_key])
+            else:
+                # Default applications while AI content loads
+                st.write("• Critical thinking and problem solving")
+                st.write("• Decision making in personal and professional contexts")
+                st.write("• Understanding complex systems and relationships")
+        
+        # Key Terms for Flashcards with proper integration
         with st.expander("Add Key Terms to Flashcards"):
             if st.button("Extract Key Terms", key="extract_terms"):
                 terms_content = generate_ai_content(
                     f"Extract 5-7 key terms and concepts from the topic: {topic['topic']}. "
                     f"For each term, provide a clear, concise definition suitable for flashcards. "
-                    f"Format as: **Term**: Definition"
+                    f"Return as JSON format: [{{'term': 'Term Name', 'definition': 'Clear definition'}}]"
                 )
                 st.session_state[f"terms_{daily_topic_key}"] = terms_content
                 st.rerun()
             
             terms_key = f"terms_{daily_topic_key}"
             if terms_key in st.session_state:
-                st.markdown(st.session_state[terms_key])
-                st.caption("Copy important terms to create your own flashcards in the Spaced Repetition section.")
+                terms_text = st.session_state[terms_key]
+                
+                # Try to parse as JSON for better integration
+                try:
+                    import json
+                    # Clean the text to extract JSON
+                    if "```json" in terms_text:
+                        json_start = terms_text.find("[")
+                        json_end = terms_text.rfind("]") + 1
+                        if json_start != -1 and json_end > json_start:
+                            terms_json = terms_text[json_start:json_end]
+                            suggested_terms = json.loads(terms_json)
+                            
+                            st.markdown("**Suggested Terms:**")
+                            selected_terms = []
+                            
+                            for term_data in suggested_terms:
+                                term = term_data.get('term', '')
+                                definition = term_data.get('definition', '')
+                                if st.checkbox(f"**{term}**", key=f"term_{term}"):
+                                    selected_terms.append(term_data)
+                                    st.caption(f"*{definition}*")
+                            
+                            # Add selected terms to flashcards
+                            if selected_terms:
+                                if st.button(f"Add {len(selected_terms)} Selected Terms to Flashcards", key="add_selected_terms"):
+                                    for term_data in selected_terms:
+                                        add_card(
+                                            term_data['term'], 
+                                            term_data['definition'], 
+                                            [topic['domain'].lower(), 'key-terms']
+                                        )
+                                    st.success(f"Added {len(selected_terms)} terms to your flashcards!")
+                                    st.rerun()
+                        else:
+                            raise ValueError("No JSON found")
+                    else:
+                        raise ValueError("No JSON format")
+                        
+                except (json.JSONDecodeError, ValueError, KeyError):
+                    # Fallback to text display
+                    st.markdown("**Generated Terms:**")
+                    st.markdown(terms_text)
+                    st.caption("Copy important terms to create your own flashcards in the Spaced Repetition section.")
+            
+            # Manual term addition
+            st.markdown("**Add Custom Term:**")
+            with st.form("add_custom_term"):
+                custom_term = st.text_input("Term/Concept", placeholder="e.g., Bayes' Theorem")
+                custom_definition = st.text_area("Definition", placeholder="P(A|B) = P(B|A) × P(A) / P(B)", height=100)
+                
+                if st.form_submit_button("Add Custom Term"):
+                    if custom_term and custom_definition:
+                        add_card(custom_term, custom_definition, [topic['domain'].lower(), 'study'])
+                        st.success(f"Added '{custom_term}' to your flashcards!")
+                        st.rerun()
 
     # Completion form
     st.markdown("### Complete Your Study")
@@ -2886,217 +3337,400 @@ def handle_grade(card: Dict[str, Any], q: int):
     st.session_state["show_back"] = False
     st.rerun()
 
-# ----- Enhanced Dual N-Back with Strategy Training -----
+# ----- Professional Dual N-Back Implementation -----
 def page_nback():
-    page_header("Dual N-Back (Visual + Audio)")
-    st.caption("Track **visual positions** AND **audio letters**. Click **Visual Match** or **Audio Match** when current stimulus matches N steps back.")
+    page_header("Visual N-Back (Simple & Working)")
+    st.caption("Track **visual positions** in a 3x3 grid. Click **Visual Match** when current position matches N steps back.")
 
-    # Strategy Training Section
-    with st.expander("Strategy Tips (Read First!)", expanded=False):
+    # Instructions
+    with st.expander("How to Play Visual N-Back", expanded=False):
         st.markdown("""
-        **Effective Strategies for Dual N-Back:**
-        1. **Rehearsal**: Mentally repeat the sequence (V-A-V-A for visual-audio pattern)
-        2. **Chunking**: Group items together (e.g., position 3 + letter C = "3C")
-        3. **Spatial Mapping**: Visualize letters in spatial positions
-        4. **Rhythmic Pattern**: Use timing to help remember sequences
-        5. **Focus Strategy**: Alternate attention between visual and audio channels
+        **Visual N-Back trains working memory through pattern recognition:**
         
-        **Before Starting:** Choose ONE strategy to focus on this session.
-        **After Session:** Reflect on which strategy worked best for you.
+        **Visual Task**: Watch for squares flashing in the 3×3 grid  
+        
+        **Your Goal**: For each trial, determine if:
+        - The **current visual position** matches the position from N trials ago
+        
+        **Controls**:
+        - Click **Visual Match** when the current position matches the position from N steps back
+        - Do nothing if it doesn't match
+        
+        **Tips**:
+        - Start with N=2 and increase difficulty gradually
+        - Use mental rehearsal: remember the sequence of positions
+        - Accuracy is more important than speed
+        - Focus on the pattern of positions over time
         """)
 
-    # Adaptive defaults
-    def_idx = adaptive_suggest_index("nback")
-    defN, defISI = NBACK_GRID[def_idx]
-
-    n = st.selectbox("N", [1, 2, 3], index=[1,2,3].index(defN))
-    isi_ms = st.selectbox("ISI (ms)", [1800, 1500, 1200, 900], index=[1800,1500,1200,900].index(defISI))
-    trials = st.selectbox("Trials", [15, 20, 30], index=1)
+    # Settings
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        n = st.selectbox("N-Back Level", [1, 2, 3, 4], index=1, help="Memory span - how many steps back to remember")
+    with col2:
+        trials = st.selectbox("Number of Trials", [15, 20, 25, 30], index=1)
+    with col3:
+        speed = st.selectbox("Speed", ["Slow (3s)", "Medium (2.5s)", "Fast (2s)", "Expert (1.5s)"], index=1)
     
-    # Strategy selection
-    strategies = ["Rehearsal", "Chunking", "Spatial Mapping", "Rhythmic Pattern", "Focus Strategy"]
-    chosen_strategy = st.selectbox("Today's Strategy Focus:", strategies)
+    # Convert speed to interval
+    speed_map = {"Slow (3s)": 3.0, "Medium (2.5s)": 2.5, "Fast (2s)": 2.0, "Expert (1.5s)": 1.5}
+    interval = speed_map[speed]
 
-    if "nb" not in st.session_state:
-        st.session_state["nb"] = None
+    # Initialize session state
+    if "dual_nback" not in st.session_state:
+        st.session_state["dual_nback"] = None
 
-    if st.button("Start Dual N-Back"):
-        # Generate random sequences for both modalities
-        visual_seq = [random.randint(0, 8) for _ in range(trials)]  # 3x3 grid positions
-        audio_letters = ["C", "H", "K", "L", "Q", "R", "S", "T"]  # 8 consonants
-        audio_seq = [random.choice(audio_letters) for _ in range(trials)]
+    # Start button
+    if st.button("Start Visual N-Back Session", type="primary", use_container_width=True):
+        # Generate sequences
+        positions = [random.randint(0, 8) for _ in range(trials)]  # 3x3 grid positions (0-8)
         
-        visual_targets = set(i for i in range(n, trials) if visual_seq[i] == visual_seq[i - n])
-        audio_targets = set(i for i in range(n, trials) if audio_seq[i] == audio_seq[i - n])
+        # Determine target trials (visual only)
+        visual_targets = set()
         
-        st.session_state["nb"] = {
-            "n": n, "trials": trials, "isi_ms": isi_ms, "strategy": chosen_strategy,
-            "visual_seq": visual_seq, "audio_seq": audio_seq,
-            "visual_targets": visual_targets, "audio_targets": audio_targets,
-            "i": 0, "visual_hits": 0, "audio_hits": 0, "visual_fa": 0, "audio_fa": 0,
-            "done": False, "show_grid": True
+        for i in range(n, trials):
+            if positions[i] == positions[i - n]:
+                visual_targets.add(i)
+        
+        # Initialize session
+        st.session_state["dual_nback"] = {
+            "n": n, "trials": trials, "interval": interval,
+            "positions": positions,
+            "visual_targets": visual_targets,
+            "current_trial": 0, "visual_responses": set(),
+            "session_start": time.time(), "trial_start": None,
+            "status": "running", "results": None
         }
         st.rerun()
 
-    nb = st.session_state["nb"]
-    if nb and nb["show_grid"]:
-        # Display current strategy
-        st.info(f"**Current Strategy**: {nb['strategy']}")
+    # Main game interface
+    dnb = st.session_state.get("dual_nback")
+    if dnb and dnb["status"] == "running":
+        # Progress bar
+        progress = dnb["current_trial"] / dnb["trials"]
+        st.progress(progress, text=f"Trial {dnb['current_trial'] + 1} of {dnb['trials']} • N={dnb['n']} • {speed}")
         
-        # Display 3x3 grid and audio
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.markdown("### Visual Grid")
-            grid_container = st.container()
+        # Current trial display
+        if dnb["current_trial"] < dnb["trials"]:
+            current_pos = dnb["positions"][dnb["current_trial"]]
             
-        with col2:
-            st.markdown("### Audio")
-            audio_container = st.container()
-        
-        # Match buttons
-        button_col1, button_col2 = st.columns(2)
-        with button_col1:
-            visual_match = st.button("Visual Match", key="nb_visual_match", help="Click when visual position matches N steps back")
-        with button_col2:
-            audio_match = st.button("🔊 Audio Match", key="nb_audio_match", help="Click when audio letter matches N steps back")
-        
-        if visual_match:
-            _nb_mark_visual()
-        if audio_match:
-            _nb_mark_audio()
-        
-        if not nb["done"]:
-            if nb["i"] < nb["trials"]:
-                # Show current stimuli
-                current_visual = nb["visual_seq"][nb["i"]]
-                current_audio = nb["audio_seq"][nb["i"]]
+            # Visual display
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                st.markdown("### Visual Grid")
+                _render_dual_nback_grid(current_pos)
                 
-                with grid_container:
-                    # Create 3x3 grid HTML
-                    grid_html = "<div style='display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; width: 200px; margin: auto;'>"
-                    for pos in range(9):
-                        if pos == current_visual:
-                            grid_html += f"<div style='width: 60px; height: 60px; background-color: #ff4444; border: 2px solid #000; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold;'>●</div>"
-                        else:
-                            grid_html += f"<div style='width: 60px; height: 60px; background-color: #f0f0f0; border: 2px solid #000;'></div>"
-                    grid_html += "</div>"
-                    st.markdown(grid_html, unsafe_allow_html=True)
+            with col2:
+                st.markdown("### Response Control")
+                st.info("Click when the current position matches the position from N trials ago")
                 
-                with audio_container:
-                    st.markdown(
-                        f"<div style='font-size: 48px; text-align: center; color: #2E8B57; font-weight: bold; padding: 20px; border: 2px solid #2E8B57; border-radius: 10px;'>{current_audio}</div>",
-                        unsafe_allow_html=True
-                    )
+                if st.button("Visual Match", key="visual_btn", use_container_width=True, type="primary"):
+                    dnb["visual_responses"].add(dnb["current_trial"])
+                    st.success("Match recorded!")
+                    time.sleep(0.3)
+            
+            # Trial info and timing
+            if dnb["current_trial"] >= dnb["n"]:
+                with st.expander("N-Back Reference (for learning)", expanded=False):
+                    past_pos = dnb["positions"][dnb["current_trial"] - dnb["n"]] + 1
+                    is_visual_target = dnb["current_trial"] in dnb["visual_targets"]
+                    status = "TARGET" if is_visual_target else "No match"
+                    st.caption(f"Visual N-back: Position {past_pos} {status}")
+            
+            # Simplified timing display
+            is_paused = dnb.get("paused", False)
+            
+            if not is_paused:
+                if dnb["trial_start"] is None:
+                    dnb["trial_start"] = time.time()
+                
+                elapsed = time.time() - dnb["trial_start"]
+                remaining = max(0, dnb["interval"] - elapsed)
+                
+                # Progress bar for trial timing
+                progress_pct = min(1.0, elapsed / dnb["interval"])
+                st.progress(progress_pct, text=f"Trial {dnb['current_trial'] + 1} - Next in: {remaining:.1f}s")
+                
+                # Auto-advance when time is up
+                if remaining <= 0:
+                    dnb["current_trial"] += 1
+                    dnb["trial_start"] = None
                     
-                    # Add audio playback using HTML5 speech synthesis
-                    st.markdown(f"""
-                    <script>
-                    if ('speechSynthesis' in window) {{
-                        var utterance = new SpeechSynthesisUtterance('{current_audio}');
-                        utterance.rate = 1.2;
-                        utterance.volume = 0.8;
-                        utterance.pitch = 1.0;
-                        speechSynthesis.speak(utterance);
-                    }}
-                    </script>
-                    """, unsafe_allow_html=True)
-                
-                # Progress info
-                st.caption(f"Trial {nb['i']+1}/{nb['trials']} | Visual: Pos {current_visual+1} | Audio: {current_audio}")
-                if nb["i"] >= n:
-                    st.caption(f"N-back targets → Visual: Pos {nb['visual_seq'][nb['i']-n]+1} | Audio: {nb['audio_seq'][nb['i']-n]}")
-                
-                # Wait for ISI then move to next
-                time.sleep(nb["isi_ms"] / 1000.0)
-                nb["i"] += 1
-                if nb["i"] < nb["trials"]:
+                    if dnb["current_trial"] >= dnb["trials"]:
+                        dnb["status"] = "completed"
+                        dnb["results"] = _calculate_dual_nback_results(dnb)
+                    
                     st.rerun()
-                else:
-                    nb["done"] = True
+                
+                # Auto-refresh every second for smooth timer
+                if remaining > 0:
+                    time.sleep(1.0)
                     st.rerun()
-
-        if nb["done"]:
-            # Calculate results for both modalities
-            visual_targets = max(1, len(nb["visual_targets"]))
-            audio_targets = max(1, len(nb["audio_targets"]))
-            
-            visual_acc = round(nb["visual_hits"] / visual_targets * 100, 1) if visual_targets > 0 else 0
-            audio_acc = round(nb["audio_hits"] / audio_targets * 100, 1) if audio_targets > 0 else 0
-            composite_acc = (visual_acc + audio_acc) / 2
-            
-            st.success(f"**Visual**: {nb['visual_hits']}/{visual_targets} hits, {nb['visual_fa']} false alarms → {visual_acc}%")
-            st.success(f"🔊 **Audio**: {nb['audio_hits']}/{audio_targets} hits, {nb['audio_fa']} false alarms → {audio_acc}%")
-            st.info(f"**Composite Accuracy**: {composite_acc:.1f}%")
-            
-            # Strategy reflection
-            st.markdown("### 🤔 Strategy Reflection")
-            strategy_rating = st.slider(f"How well did '{nb['strategy']}' work for you?", 1, 5, 3, 
-                                      help="1=Not helpful, 5=Very helpful")
-            
-            if st.button("Complete Session & Save Results"):
-                # Store results
-                S()["nbackHistory"].append({
-                    "date": today_iso(), "n": nb["n"], "trials": nb["trials"],
-                    "isi": nb["isi_ms"], "visual_acc": visual_acc, "audio_acc": audio_acc,
-                    "composite_acc": composite_acc, "strategy": nb["strategy"], 
-                    "strategy_rating": strategy_rating, "type": "dual"
-                })
-                
-                # Adaptive update based on composite score
-                level_idx = NBACK_GRID.index((n, isi_ms)) if (n, isi_ms) in NBACK_GRID else adaptive_suggest_index("nback")
-                adaptive_update("nback", level_idx, accuracy=composite_acc/100.0)
-                
-                # Mark N-Back as completed
-                mark_completed("nback")
-                save_state()
-                
-                # Strategy feedback
-                if strategy_rating >= 4:
-                    st.success(f"Great! '{nb['strategy']}' is working well for you. Consider using it again.")
-                elif strategy_rating <= 2:
-                    st.info(f"'{nb['strategy']}' wasn't very helpful. Try a different strategy next time.")
-                
-                st.session_state["nb"] = None
+            else:
+                # Show paused state
+                st.progress(0.0, text="Session Paused - Click Resume to continue")
+        
+        # Enhanced session controls
+        st.markdown("### Session Controls")
+        control_col1, control_col2, control_col3 = st.columns(3)
+        
+        # Check if session is paused
+        is_paused = dnb.get("paused", False)
+        
+        with control_col1:
+            if is_paused:
+                if st.button("Resume", key="resume_session", help="Resume the paused session", use_container_width=True, type="primary"):
+                    dnb["paused"] = False
+                    dnb["trial_start"] = time.time()  # Reset trial timer
+                    st.rerun()
+            else:
+                if st.button("Pause", key="pause_session", help="Pause the current session", use_container_width=True):
+                    dnb["paused"] = True
+                    dnb["trial_start"] = None
+                    st.rerun()
+        
+        with control_col2:
+            if st.button("Skip Trial", key="manual_next", help="Skip the timer and go to next trial", use_container_width=True):
+                dnb["current_trial"] += 1
+                dnb["trial_start"] = None
+                dnb["paused"] = False  # Unpause if skipping
+                if dnb["current_trial"] >= dnb["trials"]:
+                    dnb["status"] = "completed"
+                    dnb["results"] = _calculate_dual_nback_results(dnb)
                 st.rerun()
+        
+        with control_col3:
+            if st.button("Restart", key="restart_session", help="Start a new session", use_container_width=True):
+                st.session_state["dual_nback"] = None
+                st.rerun()
+        
+        # Show pause status
+        if is_paused:
+            st.warning("Session is paused. Click 'Resume' to continue or 'Skip Trial' to advance.")
 
-    # Academic Research References
-    st.markdown("---")
-    st.caption("**Research Evidence**: Dual N-Back training has been shown to improve fluid intelligence and working memory capacity (Jaeggi et al., 2008; Au et al., 2015). Studies demonstrate transfer effects to other cognitive tasks and sustained improvements with consistent practice.")
+    # Results display
+    elif dnb and dnb["status"] == "completed":
+        _display_dual_nback_results(dnb)
 
-def _nb_mark_visual():
-    nb = st.session_state.get("nb")
-    if not nb or nb["done"] or nb["i"] == 0:
-        return
+def _render_dual_nback_grid(highlighted_pos):
+    """Render 3x3 grid with highlighted position using CSS styling for visual clarity"""
     
-    current_idx = nb["i"]
-    if current_idx >= nb["n"]:
-        if current_idx in nb["visual_targets"]:
-            nb["visual_hits"] += 1
-            st.success("✅ Visual hit!")
-        else:
-            nb["visual_fa"] += 1
-            st.error("❌ Visual false alarm!")
-    else:
-        nb["visual_fa"] += 1
-        st.warning("Too early for visual N-back!")
-
-def _nb_mark_audio():
-    nb = st.session_state.get("nb")
-    if not nb or nb["done"] or nb["i"] == 0:
-        return
+    # CSS for proper grid styling
+    grid_css = """
+    <style>
+    .nback-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+        gap: 8px;
+        width: 300px;
+        height: 300px;
+        margin: 20px auto;
+        background-color: #2e2e2e;
+        padding: 20px;
+        border-radius: 10px;
+    }
+    .grid-cell {
+        background-color: #1e1e1e;
+        border: 2px solid #444;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    .grid-cell.highlighted {
+        background-color: #00ff88;
+        border-color: #00cc66;
+        color: #000;
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+    }
+    .grid-cell.normal {
+        background-color: #333;
+        border-color: #666;
+        color: #888;
+    }
+    </style>
+    """
     
-    current_idx = nb["i"]
-    if current_idx >= nb["n"]:
-        if current_idx in nb["audio_targets"]:
-            nb["audio_hits"] += 1
-            st.success("✅ Audio hit!")
+    # Generate grid HTML
+    grid_html = grid_css + '<div class="nback-grid">'
+    
+    for pos in range(9):
+        if pos == highlighted_pos:
+            grid_html += f'<div class="grid-cell highlighted">●</div>'
         else:
-            nb["audio_fa"] += 1
-            st.error("❌ Audio false alarm!")
+            grid_html += f'<div class="grid-cell normal"></div>'
+    
+    grid_html += '</div>'
+    
+    st.markdown(grid_html, unsafe_allow_html=True)
+    st.caption(f"Position {highlighted_pos + 1} is highlighted")
+
+def _calculate_dual_nback_results(dnb):
+    """Calculate performance metrics for visual n-back session"""
+    # Visual performance only
+    visual_hits = len(dnb["visual_responses"] & dnb["visual_targets"])
+    visual_misses = len(dnb["visual_targets"] - dnb["visual_responses"])
+    visual_false_alarms = len(dnb["visual_responses"] - dnb["visual_targets"])
+    visual_correct_rejections = dnb["trials"] - len(dnb["visual_targets"]) - visual_false_alarms
+    
+    # Calculate accuracy
+    visual_accuracy = (visual_hits + visual_correct_rejections) / dnb["trials"] * 100
+    
+    return {
+        "visual_hits": visual_hits,
+        "visual_misses": visual_misses,
+        "visual_false_alarms": visual_false_alarms,
+        "visual_correct_rejections": visual_correct_rejections,
+        "visual_accuracy": visual_accuracy,
+        "overall_accuracy": visual_accuracy,
+        "total_targets": len(dnb["visual_targets"]),
+        "duration": (time.time() - dnb["session_start"]) / 60
+    }
+
+def _display_dual_nback_results(dnb):
+    """Display session results and performance analysis"""
+    st.success("Visual N-Back Session Complete!")
+    
+    results = dnb["results"]
+    
+    # Performance overview
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Overall Score", f"{results['overall_accuracy']:.1f}%")
+    with col2:
+        st.metric("Correct Hits", results['visual_hits'])
+    with col3:
+        st.metric("False Alarms", results['visual_false_alarms'])
+    
+    # Detailed breakdown
+    st.markdown("### Performance Details")
+    
+    # Visual performance only
+    st.markdown("**Visual Performance:**")
+    visual_col1, visual_col2, visual_col3, visual_col4 = st.columns(4)
+    
+    with visual_col1:
+        st.metric("Hits", results['visual_hits'])
+    with visual_col2:
+        st.metric("Misses", results['visual_misses'])
+    with visual_col3:
+        st.metric("False Alarms", results['visual_false_alarms'])
+    with visual_col4:
+        st.metric("Accuracy", f"{results['visual_accuracy']:.1f}%")
+    
+    # Performance feedback
+    if results['overall_accuracy'] >= 80:
+        st.success("Excellent performance! Consider increasing difficulty.")
+    elif results['overall_accuracy'] >= 60:
+        st.info("Good performance! Keep practicing at this level.")
     else:
-        nb["audio_fa"] += 1
-        st.warning("Too early for audio N-back!")
+        st.error("Consider reducing difficulty")
+    
+    # Session info
+    st.markdown("### Session Summary")
+    st.write(f"**N-Level:** {dnb['n']}")
+    st.write(f"**Trials:** {dnb['trials']}")
+    st.write(f"**Duration:** {results['duration']:.1f} minutes")
+    st.write(f"**Total Targets:** {results['total_targets']}")
+    
+    # Save results option
+    if st.button("Save Results & Start New Session", type="primary"):
+        # Simple save to session state for now
+        if "nback_history" not in st.session_state:
+            st.session_state["nback_history"] = []
+        
+        session_data = {
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "n_level": dnb['n'],
+            "trials": dnb['trials'],
+            "accuracy": results['overall_accuracy'],
+            "hits": results['visual_hits'],
+            "false_alarms": results['visual_false_alarms']
+        }
+        
+        st.session_state["nback_history"].append(session_data)
+        st.success("Results saved!")
+        st.session_state["dual_nback"] = None
+        st.rerun()
+    
+    # Strategy reflection
+    st.markdown("### Strategy Reflection")
+    strategy_rating = st.slider(f"How well did your strategy work?", 1, 5, 3, 
+                              help="1=Not helpful, 5=Very helpful")
+    
+    with col1:
+        st.metric("👁️ Visual Accuracy", f"{results['visual']['accuracy']:.1f}%")
+        st.caption(f"Hits: {results['visual']['hits']} • False Alarms: {results['visual']['false_alarms']}")
+    
+    with col2:
+        st.metric("🔊 Audio Accuracy", f"{results['audio']['accuracy']:.1f}%")
+        st.caption(f"Hits: {results['audio']['hits']} • False Alarms: {results['audio']['false_alarms']}")
+    
+    with col3:
+        st.metric("Overall Score", f"{results['overall_accuracy']:.1f}%")
+        
+        # Performance feedback
+        if results['overall_accuracy'] >= 85:
+            st.success("🌟 Excellent! Try increasing N-level")
+        elif results['overall_accuracy'] >= 70:
+            st.info("👍 Good performance!")
+        elif results['overall_accuracy'] >= 55:
+            st.warning("💪 Keep practicing at this level")
+        else:
+            st.error("Consider reducing difficulty")
+    
+    # Detailed breakdown
+    with st.expander("Detailed Performance Analysis"):
+        col_a, col_b = st.columns(2)
+        
+        with col_a:
+            st.markdown("**Visual Performance:**")
+            st.write(f"• Hits: {results['visual']['hits']}")
+            st.write(f"• Misses: {results['visual']['misses']}")
+            st.write(f"• False Alarms: {results['visual']['false_alarms']}")
+            st.write(f"• Correct Rejections: {results['visual']['correct_rejections']}")
+        
+        with col_b:
+            st.markdown("**Audio Performance:**")
+            st.write(f"• Hits: {results['audio']['hits']}")
+            st.write(f"• Misses: {results['audio']['misses']}")
+            st.write(f"• False Alarms: {results['audio']['false_alarms']}")
+            st.write(f"• Correct Rejections: {results['audio']['correct_rejections']}")
+    
+    # Save results and mark completion
+    if st.button("💾 Save Results & Start New Session", type="primary"):
+        _save_dual_nback_results(dnb, results)
+        st.session_state["dual_nback"] = None
+        st.success("Results saved!")
+        st.rerun()
+
+def _save_dual_nback_results(dnb, results):
+    """Save dual n-back session results to user profile"""
+    if "nback_history" not in S():
+        S()["nback_history"] = []
+    
+    session_data = {
+        "date": today_iso(),
+        "type": "dual_nback",
+        "n_level": dnb["n"],
+        "trials": dnb["trials"],
+        "interval": dnb["interval"],
+        "visual_accuracy": results["visual"]["accuracy"],
+        "audio_accuracy": results["audio"]["accuracy"], 
+        "overall_accuracy": results["overall_accuracy"],
+        "duration": results["duration"],
+        "timestamp": time.time()
+    }
+    
+    S()["nback_history"].append(session_data)
+    mark_completed("nback")
+    save_state()
 
 # ----- Processing Speed Training -----
 def page_processing_speed():
@@ -3350,7 +3984,7 @@ def _proc_speed_finish():
     st.info(f"**Total Trials**: {ps['trials_completed']} in {ps['duration']} minutes")
     
     # Strategy reflection
-    st.markdown("### 🤔 Strategy Reflection")
+    st.markdown("### Strategy Reflection")
     strategy_rating = st.slider(f"How well did '{ps['strategy']}' work for you?", 1, 5, 3, 
                               help="1=Not helpful, 5=Very helpful")
     
@@ -4001,7 +4635,7 @@ def page_mm():
             
             # Show difficulty adjustment
             if adjustment["adjustment"] == "increased":
-                st.info(f"🔥 Great job! Difficulty increased from {adjustment['old_level']} to {adjustment['new_level']}")
+                st.info(f"Great job! Difficulty increased from {adjustment['old_level']} to {adjustment['new_level']}")
             elif adjustment["adjustment"] == "decreased":
                 st.info(f"📉 Difficulty decreased from {adjustment['old_level']} to {adjustment['new_level']} to target 80-85%")
             else:
@@ -4214,15 +4848,21 @@ def page_writing():
                     total_time = 12 * 60  # 12 minutes in seconds
                     time_spent = total_time - (st.session_state["w"]["end"] - now_ts())
                     
+                    # AI evaluation
+                    with st.spinner("Getting AI feedback on your writing..."):
+                        evaluation = evaluate_writing_with_ai(st.session_state["w"]["prompt"], st.session_state["w"]["text"])
+                    
                     S()["writingSessions"].append({
                         "date": today_iso(),
                         "prompt": st.session_state["w"]["prompt"],
                         "text": st.session_state["w"]["text"],
                         "time_spent_minutes": time_spent / 60,
-                        "completed_early": True
+                        "completed_early": True,
+                        "ai_evaluation": evaluation
                     })
                     mark_completed("writing")
                     save_state()
+                    st.session_state["w_evaluation"] = evaluation
                     st.session_state["w"] = None
                     st.success("Writing session completed!")
                     st.rerun()
@@ -4231,18 +4871,68 @@ def page_writing():
                 st.success("Time! Review your draft.")
                 with col2:
                     if st.button("Save session"):
+                        # AI evaluation
+                        with st.spinner("Getting AI feedback on your writing..."):
+                            evaluation = evaluate_writing_with_ai(st.session_state["w"]["prompt"], st.session_state["w"]["text"])
+                        
                         S()["writingSessions"].append({
                             "date": today_iso(),
                             "prompt": st.session_state["w"]["prompt"],
                             "text": st.session_state["w"]["text"],
                             "time_spent_minutes": 12,
-                            "completed_early": False
+                            "completed_early": False,
+                            "ai_evaluation": evaluation
                         })
                         # Mark Writing as completed
                         mark_completed("writing")
                         save_state()
+                        st.session_state["w_evaluation"] = evaluation
                         st.session_state["w"] = None
                         st.rerun()
+
+    # Show AI evaluation if available
+    if "w_evaluation" in st.session_state and st.session_state["w_evaluation"]:
+        evaluation = st.session_state["w_evaluation"]
+        
+        st.markdown("---")
+        st.markdown("### AI Writing Evaluation")
+        
+        if "error" in evaluation:
+            st.error(evaluation["error"])
+            st.info(evaluation["fallback_feedback"])
+        else:
+            # Score display
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Overall Score", f"{evaluation['overall_score']}/10")
+            with col2:
+                st.metric("Clarity", f"{evaluation['clarity_score']}/10")
+            with col3:
+                st.metric("Depth", f"{evaluation['depth_score']}/10")
+            with col4:
+                st.metric("Evidence", f"{evaluation['evidence_score']}/10")
+            
+            # Detailed feedback
+            if evaluation['detailed_feedback']:
+                st.markdown("#### Detailed Feedback")
+                st.info(evaluation['detailed_feedback'].strip())
+            
+            # Strengths
+            if evaluation['strengths']:
+                st.markdown("#### What You Did Well")
+                for strength in evaluation['strengths']:
+                    st.success(f"✅ {strength}")
+            
+            # Areas for improvement
+            if evaluation['improvements']:
+                st.markdown("#### Areas for Improvement")
+                for improvement in evaluation['improvements']:
+                    st.warning(f"📈 {improvement}")
+        
+        # Clear evaluation button
+        if st.button("Clear Evaluation", key="clear_eval"):
+            del st.session_state["w_evaluation"]
+            st.rerun()
 
     # Academic Research References
     st.markdown("---")
@@ -4481,6 +5171,7 @@ def get_daily_content(content_type="crt"):
 def page_crt():
     page_header("Cognitive Reflection Test")
     st.caption("Tests the ability to override intuitive but incorrect responses. Measures System 2 thinking.")
+    st.success("🎯 CRT page loaded successfully!")  # Debug line
     
     if "crt" not in st.session_state:
         st.session_state["crt"] = {
@@ -4495,9 +5186,22 @@ def page_crt():
     
     # Get daily CRT question
     if not crt["question"]:
-        crt["question"] = get_daily_content("crt")
+        try:
+            crt["question"] = get_daily_content("crt")
+            st.info("✅ Question loaded successfully")
+        except Exception as e:
+            st.error(f"Error loading question: {e}")
+            # Fallback to manual question
+            crt["question"] = {
+                "question": "A bat and ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost?",
+                "intuitive_answer": "$0.10",
+                "correct_answer": "$0.05",
+                "explanation": "If the ball costs X, then the bat costs X + $1.00. Together: X + (X + $1.00) = $1.10, so 2X = $0.10, therefore X = $0.05"
+            }
     
     question_data = crt["question"]
+    st.write(f"Debug: Question data type: {type(question_data)}")
+    st.write(f"Debug: Question data: {question_data}")
     
     with st.expander("Understanding CRT", expanded=False):
         st.markdown("""
@@ -4585,7 +5289,7 @@ def page_crt():
         
         # Show difficulty adjustment
         if adjustment["adjustment"] == "increased":
-            st.info(f"🔥 Great! Difficulty increased to level {adjustment['new_level']}")
+            st.info(f"Great! Difficulty increased to level {adjustment['new_level']}")
         elif adjustment["adjustment"] == "decreased":
             st.info(f"📉 Difficulty adjusted to level {adjustment['new_level']}")
         else:
@@ -4674,11 +5378,14 @@ def page_base_rate():
         
         # Parse user answer
         try:
-            user_pct = float(br["user_answer"].replace("%", ""))
-            correct_pct = float(problem["correct_answer"].replace("%", ""))
-            intuitive_pct = float(problem["intuitive_answer"].replace("%", ""))
+            user_pct = parse_number_flexible(br["user_answer"])
+            correct_pct = parse_number_flexible(problem["correct_answer"])
+            intuitive_pct = parse_number_flexible(problem["intuitive_answer"])
             
-            if abs(user_pct - correct_pct) < 5:
+            if user_pct is None:
+                st.error("Please enter a valid number (e.g., 15, 15%, $15, 15 million)")
+                correct = False
+            elif abs(user_pct - correct_pct) < 5:
                 st.success("✓ Excellent! You properly considered the base rate.")
                 correct = True
             elif abs(user_pct - intuitive_pct) < 5:
@@ -4687,8 +5394,8 @@ def page_base_rate():
             else:
                 st.warning("✗ Not quite right.")
                 correct = False
-        except:
-            st.error("Invalid number format")
+        except Exception as e:
+            st.error(f"Please enter a valid number format. Examples: 15, 15%, $15, 15 million")
             correct = False
         
         st.info(f"**Correct answer**: {problem['correct_answer']}")
@@ -4738,7 +5445,7 @@ def page_base_rate():
         
         # Show difficulty adjustment
         if adjustment["adjustment"] == "increased":
-            st.info(f"🔥 Excellent Bayesian reasoning! Difficulty increased to level {adjustment['new_level']}")
+            st.info(f"Excellent Bayesian reasoning! Difficulty increased to level {adjustment['new_level']}")
         elif adjustment["adjustment"] == "decreased":
             st.info(f"📉 Difficulty adjusted to level {adjustment['new_level']}")
         else:
@@ -4899,8 +5606,11 @@ def page_anchoring():
                 elapsed_time = time.time() - anchor["start_time"]
                 
                 try:
-                    user_num = float(user_estimate.replace(",", ""))
-                    correct_num = float(str(task["correct_answer"]).replace(",", ""))
+                    user_num = parse_number_flexible(user_estimate)
+                    correct_num = parse_number_flexible(str(task["correct_answer"]))
+                    
+                    if user_num is None or correct_num is None:
+                        raise ValueError("Could not parse numbers")
                     
                     # Calculate anchor effect (how far from correct answer)
                     error_percentage = abs(user_num - correct_num) / correct_num * 100
@@ -4936,8 +5646,17 @@ def page_anchoring():
         st.success(f"**Correct answer**: {task['correct_answer']}")
         
         try:
-            user_num = float(anchor["user_estimate"].replace(",", ""))
-            correct_num = float(str(task["correct_answer"]).replace(",", ""))
+            user_num = parse_number_flexible(anchor["user_estimate"])
+            correct_num = parse_number_flexible(str(task["correct_answer"]))
+            
+            if user_num is None or correct_num is None:
+                st.error("Please enter a valid number format. Examples: 230 billion, $230b, 230,000,000,000")
+                st.info("Accepted formats: 1000, 1,000, $1000, 1k, 1 thousand, 1 million, 1m, 1 billion, 1b")
+                if st.button("Try Again", key="anchor_retry"):
+                    anchor["completed"] = False
+                    st.rerun()
+                return
+                
             error_percentage = abs(user_num - correct_num) / correct_num * 100
             
             # Convert error to accuracy score (lower error = higher accuracy)
@@ -4951,7 +5670,7 @@ def page_anchoring():
             
             if error_percentage < 20:
                 st.success("🎯 Excellent! You resisted the anchoring effect well.")
-                score_emoji = "🔥"
+                score_emoji = ""
             elif error_percentage < 50:
                 st.warning("⚠️ Good estimate, but may have been influenced by the anchor.")
                 score_emoji = "👍"
@@ -4969,16 +5688,21 @@ def page_anchoring():
             
             # Show difficulty adjustment
             if adjustment["adjustment"] == "increased":
-                st.info(f"🔥 Great anchoring resistance! Difficulty increased to level {adjustment['new_level']}")
+                st.info(f"Great anchoring resistance! Difficulty increased to level {adjustment['new_level']}")
             elif adjustment["adjustment"] == "decreased":
                 st.info(f"📉 Difficulty adjusted to level {adjustment['new_level']}")
             else:
                 st.info(f"🎯 Difficulty maintained at level {adjustment['new_level']}")
                 
-        except:
-            st.error("Invalid number format")
+        except Exception as e:
+            st.error("Please enter a valid number format. Examples: 230 billion, $230b, 230,000,000,000")
+            st.info("Accepted formats: 1000, 1,000, $1000, 1k, 1 thousand, 1 million, 1m, 1 billion, 1b")
+            if st.button("Try Again", key="anchor_retry2"):
+                anchor["completed"] = False
+                st.rerun()
+            return
         
-        st.info(f"**Anchoring bias explanation**: {task['bias_explanation']}")
+        st.info(f"**Anchoring bias explanation**: {task.get('bias_explanation', 'Anchoring bias occurs when irrelevant information influences our judgments and estimates.')}")
         
         if st.button("Try Another Task", key="anchor_restart"):
             st.session_state["anchoring"] = None
@@ -5117,12 +5841,12 @@ def page_healthy_baseline():
             streak = streaks.get(activity, 0)
             activity_name = activity.replace("_", " ").title()
             if streak > 0:
-                st.metric(activity_name, f"{streak} days 🔥")
+                st.metric(activity_name, f"{streak} days")
             else:
                 st.metric(activity_name, "0 days")
     
     # Educational content
-    with st.expander("🧠 Brain Health Science", expanded=False):
+    with st.expander("Brain Health Science", expanded=False):
         st.markdown("""
         **Meditation**: Increases gray matter density, improves attention and emotional regulation
         
@@ -5320,6 +6044,7 @@ PAGES = [
     "Mental Math",
     "Writing",
     "Forecasts",
+    "CRT Test",
     "Base Rate",
     "Anchoring",
     "Argument Map",
@@ -6214,6 +6939,8 @@ with st.sidebar:
                 page_completed = True
             elif "Anchoring" in page and completion_status.get("anchoring", False):
                 page_completed = True
+            elif "CRT" in page and completion_status.get("crt", False):
+                page_completed = True
             elif "Healthy Baseline" in page and all(completion_status.get(activity, False) for activity in ["meditation", "sleep_quality", "nutrition", "exercise", "social_engagement", "hydration", "sunlight", "reading"]):
                 page_completed = True
             elif "World Model" in page and (completion_status.get("world_model_a", False) or completion_status.get("world_model_b", False)):
@@ -6319,6 +7046,7 @@ elif page == "Processing Speed": page_processing_speed()
 elif page == "Mental Math": page_mm()
 elif page == "Writing": page_writing()
 elif page == "Forecasts": page_forecasts()
+elif page == "CRT Test": page_crt()
 elif page == "Base Rate": page_base_rate()
 elif page == "Anchoring": page_anchoring()
 elif page == "Argument Map": page_argmap()
