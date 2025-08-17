@@ -11,8 +11,231 @@ from typing import List, Dict, Any, Optional, Tuple
 import streamlit as st
 from graphviz import Digraph
 import matplotlib.pyplot as plt
-import os
-import hashlib
+
+# AI Integration for Streamlit Cloud
+def get_ai_api_key():
+    """Get AI API key from Streamlit secrets or user input"""
+    try:
+        # First, try to get from Streamlit secrets (for admin-controlled deployment)
+        if "openai" in st.secrets:
+            return st.secrets["openai"]["api_key"]
+        elif "ai" in st.secrets:
+            return st.secrets["ai"]["openai_api_key"]
+    except:
+        pass
+    
+    # If no secrets, get from user input (for user-controlled deployment)
+    return st.session_state.get("user_api_key", None)
+
+def setup_ai_configuration():
+    """Setup AI configuration in sidebar with persistent browser storage"""
+    with st.sidebar:
+        with st.expander("AI Configuration", expanded=not get_ai_api_key()):
+            st.markdown("### AI Content Generation")
+            
+            # Always show user input option
+            st.markdown("**Enter your OpenAI API key:**")
+            st.caption("Stored securely in your browser only")
+            
+            api_key = st.text_input(
+                "API Key", 
+                value=st.session_state.get("user_api_key", ""),
+                type="password",
+                placeholder="sk-...",
+                help="Your key is saved in browser storage - no need to re-enter each visit"
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Save API Key"):
+                    if api_key.startswith("sk-"):
+                        st.session_state["user_api_key"] = api_key
+                        # Save to browser localStorage
+                        st.markdown(f"""
+                        <script>
+                        localStorage.setItem('maxmind_openai_key', '{api_key}');
+                        </script>
+                        """, unsafe_allow_html=True)
+                        st.success("API key saved!")
+                        st.rerun()
+                    else:
+                        st.error("Please enter a valid OpenAI API key")
+            
+            with col2:
+                # Clear API key option
+                if st.session_state.get("user_api_key"):
+                    if st.button("Clear Key"):
+                        st.session_state.pop("user_api_key", None)
+                        st.markdown("""
+                        <script>
+                        localStorage.removeItem('maxmind_openai_key');
+                        </script>
+                        """, unsafe_allow_html=True)
+                        st.warning("API key cleared")
+                        st.rerun()
+            
+            # Show status
+            if get_ai_api_key():
+                st.success("AI content generation is enabled!")
+                st.info("Ready to generate Topic Study content")
+                return True
+            else:
+                st.warning("Enter API key to enable AI features")
+                st.info("Get your key from https://platform.openai.com/api-keys")
+                return False
+
+def generate_ai_content(prompt: str):
+    """Generate AI content using OpenAI"""
+    api_key = get_ai_api_key()
+    if not api_key:
+        return "AI content requires API key configuration."
+    
+    try:
+        import openai
+        client = openai.OpenAI(api_key=api_key)
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # Use the cheaper model
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800,
+            temperature=0.7
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"AI generation error: {str(e)}"
+
+def generate_category_topic(category: str):
+    """Generate AI-powered topic for Topic Study page"""
+    api_key = get_ai_api_key()
+    if not api_key:
+        # Fallback to static topic
+        return {
+            'title': f"Introduction to {category}",
+            'category': category,
+            'difficulty': 'medium',
+            'description': f"A foundational overview of key concepts in {category}.",
+            'content': f"Study the fundamental principles and major concepts that define {category}. This topic will help you build a solid foundation for more advanced topics.",
+            'questions': [
+                f"What are the core principles of {category}?",
+                f"How has {category} evolved over time?",
+                f"What are the practical applications of {category}?"
+            ],
+            'applications': [f"Understanding {category} enhances critical thinking and problem-solving abilities."]
+        }
+    
+    prompt = f"""Generate a detailed study topic for {category}. Return a JSON structure with:
+    - title: An engaging, specific topic name
+    - category: {category}
+    - difficulty: easy/medium/hard
+    - description: 2-sentence overview
+    - content: 3-4 paragraph study material (use markdown)
+    - questions: 3 thought-provoking questions
+    - applications: 2-3 real-world applications
+
+    Make it intellectually rigorous but accessible. Focus on concepts that build critical thinking."""
+    
+    try:
+        import json
+        response = generate_ai_content(prompt)
+        # Try to parse as JSON, fallback to structured text
+        if response.startswith('{'):
+            return json.loads(response)
+        else:
+            return {
+                'title': f"AI-Generated {category} Topic",
+                'category': category,
+                'difficulty': 'medium',
+                'description': "An AI-curated topic for deep learning.",
+                'content': response,
+                'questions': [
+                    f"What are the key insights from this {category} topic?",
+                    "How can you apply this knowledge?",
+                    "What questions does this raise for further study?"
+                ],
+                'applications': ["Enhanced critical thinking", "Improved problem-solving"]
+            }
+    except:
+        # Fallback if AI fails
+        return {
+            'title': f"Exploring {category} Fundamentals",
+            'category': category,
+            'difficulty': 'medium',
+            'description': f"A comprehensive introduction to {category} concepts.",
+            'content': f"This topic explores the foundational elements of {category}, examining key theories, methodologies, and applications that shape our understanding of this field.",
+            'questions': [
+                f"What defines the core of {category}?",
+                f"How do {category} concepts apply to daily life?",
+                f"What are the latest developments in {category}?"
+            ],
+            'applications': ["Critical thinking development", "Analytical reasoning enhancement"]
+        }
+
+def generate_intelligent_topic(domain=None):
+    """Generate AI-powered topic for World Model page"""
+    api_key = get_ai_api_key()
+    
+    domains = ["philosophy", "neuroscience", "psychology", "economics", "physics", "mathematics", "biology", "history"]
+    if not domain:
+        import random
+        domain = random.choice(domains)
+    
+    if not api_key:
+        # Fallback to static topic
+        return {
+            'topic': f"Fundamentals of {domain.title()}",
+            'domain': domain,
+            'level': 1,
+            'description': f"Build foundational knowledge in {domain}",
+            'suggested_duration': "15-20 minutes",
+            'learning_objective': f"Understand basic {domain} concepts"
+        }
+    
+    prompt = f"""Generate a micro-learning topic for {domain}. Return JSON with:
+    - topic: Specific, intriguing topic name (not generic)
+    - domain: {domain}
+    - level: 1-5 (1=beginner, 5=expert)
+    - description: 1 sentence explaining why this matters
+    - suggested_duration: time estimate (e.g., "10-15 minutes")
+    - learning_objective: clear goal statement
+
+    Focus on topics that build mental models and connect to other domains. Make it intellectually stimulating."""
+    
+    try:
+        import json
+        import random
+        response = generate_ai_content(prompt)
+        if response.startswith('{'):
+            return json.loads(response)
+        else:
+            # Fallback with better topics
+            topics_by_domain = {
+                'philosophy': ['Epistemic Humility', 'The Frame Problem', 'Moral Uncertainty'],
+                'neuroscience': ['Predictive Processing', 'Neural Plasticity', 'Default Mode Network'],
+                'psychology': ['Cognitive Biases', 'System 1 vs System 2', 'Flow States'],
+                'economics': ['Nash Equilibrium', 'Opportunity Cost', 'Market Failures'],
+                'physics': ['Entropy and Information', 'Quantum Superposition', 'Conservation Laws'],
+                'mathematics': ['Proof by Contradiction', 'Exponential Growth', 'Fractals'],
+                'biology': ['Evolutionary Pressure', 'Emergent Properties', 'Homeostasis'],
+                'history': ['Historical Contingency', 'Cultural Evolution', 'Technology Adoption']
+            }
+            topic_name = random.choice(topics_by_domain.get(domain, [f"{domain.title()} Concepts"]))
+            return {
+                'topic': topic_name,
+                'domain': domain,
+                'level': random.randint(1, 3),
+                'description': f"Explore {topic_name} and its implications for understanding reality",
+                'suggested_duration': f"{random.choice([10, 15, 20])}-{random.choice([15, 20, 25])} minutes",
+                'learning_objective': f"Develop intuition for {topic_name} principles"
+            }
+    except:
+        return {
+            'topic': f"Core Concepts in {domain.title()}",
+            'domain': domain,
+            'level': 1,
+            'description': f"Build foundational understanding of {domain}",
+            'suggested_duration': "15-20 minutes",
+            'learning_objective': f"Grasp essential {domain} principles"
+        }
 
 # Import persistent storage
 try:
@@ -20,210 +243,6 @@ try:
     STORAGE_AVAILABLE = True
 except ImportError:
     STORAGE_AVAILABLE = False
-
-# AI Integration
-AI_PROVIDERS = {
-    "openai": "OpenAI GPT",
-    "anthropic": "Anthropic Claude", 
-    "google": "Google Gemini"
-}
-
-def get_ai_client():
-    """Get configured AI client based on user selection"""
-    provider = st.session_state.get("ai_provider", "openai")
-    api_key = st.session_state.get("ai_api_key", "")
-    
-    if not api_key:
-        return None
-        
-    try:
-        if provider == "openai":
-            import openai
-            return openai.OpenAI(api_key=api_key)
-        elif provider == "anthropic":
-            import anthropic
-            return anthropic.Anthropic(api_key=api_key)
-        elif provider == "google":
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            return genai.GenerativeModel('gemini-pro')
-    except ImportError:
-        st.error(f"Please install the {provider} Python package")
-        return None
-    except Exception as e:
-        st.error(f"Error connecting to {provider}: {e}")
-        return None
-
-def generate_ai_content(prompt: str, max_tokens: int = 1000) -> str:
-    """Generate content using configured AI provider"""
-    client = get_ai_client()
-    if not client:
-        return "AI generation not available. Please configure API key in settings."
-    
-    provider = st.session_state.get("ai_provider", "openai")
-    
-    try:
-        if provider == "openai":
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=max_tokens,
-                temperature=0.7
-            )
-            return response.choices[0].message.content
-        elif provider == "anthropic":
-            response = client.messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=max_tokens,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return response.content[0].text
-        elif provider == "google":
-            response = client.generate_content(prompt)
-            return response.text
-    except Exception as e:
-        st.error(f"AI generation error: {e}")
-        return "Error generating content. Please check your API configuration."
-
-def get_daily_content_key(content_type: str, level: int = 1) -> str:
-    """Generate a unique key for daily content to ensure consistency"""
-    today = today_iso()
-    user_id = st.session_state.get("user_id", "default")
-    return hashlib.md5(f"{user_id}_{today}_{content_type}_{level}".encode()).hexdigest()
-
-def get_cached_ai_content(cache_key: str, generator_func, *args, **kwargs) -> str:
-    """Cache AI-generated content for the day to avoid regenerating"""
-    if "daily_ai_cache" not in st.session_state:
-        st.session_state["daily_ai_cache"] = {}
-    
-    if cache_key not in st.session_state["daily_ai_cache"]:
-        st.session_state["daily_ai_cache"][cache_key] = generator_func(*args, **kwargs)
-    
-    return st.session_state["daily_ai_cache"][cache_key]
-
-def generate_mental_model_content(category: str, model_name: str, user_level: int = 1) -> dict:
-    """Generate AI-powered mental model content adapted to user level"""
-    
-    difficulty_levels = {
-        1: "beginner-friendly with simple examples",
-        2: "intermediate with practical applications", 
-        3: "advanced with complex scenarios",
-        4: "expert-level with nuanced insights",
-        5: "master-level with philosophical depth"
-    }
-    
-    difficulty = difficulty_levels.get(user_level, "intermediate")
-    
-    prompt = f"""
-Generate comprehensive educational content for the mental model "{model_name}" in the {category.replace('_', ' ')} category.
-Target level: {difficulty}
-
-Provide a structured response with:
-1. DEFINITION: Clear, concise definition (2-3 sentences)
-2. EXAMPLE: Real-world example that illustrates the concept
-3. EXERCISE: Practical exercise for the user to apply this model
-4. INSIGHTS: 3 key insights or takeaways
-5. CONNECTIONS: 2 related mental models or concepts
-6. QUESTION: One thought-provoking question for reflection
-
-Format as plain text without special formatting. Keep it engaging and practical.
-"""
-    
-    cache_key = get_daily_content_key(f"mental_model_{category}_{model_name}", user_level)
-    return get_cached_ai_content(cache_key, generate_ai_content, prompt, 800)
-
-def generate_daily_mental_models(user_level: int = 1) -> dict:
-    """Generate today's mental model categories and focus areas using AI"""
-    
-    prompt = f"""
-Generate 6 mental model categories for cognitive training. For each category, provide:
-- A clear name (2-3 words)
-- Brief description (one sentence)
-- 5 specific mental models/concepts within that category
-
-Categories should cover: probabilistic thinking, systems analysis, strategic reasoning, cognitive psychology, decision-making, and evolutionary concepts.
-
-Target level: {"beginner" if user_level <= 2 else "intermediate" if user_level <= 4 else "advanced"}
-
-Format as: 
-CATEGORY_NAME: Description
-- Model 1
-- Model 2
-- Model 3
-- Model 4
-- Model 5
-
-Keep it practical and educational.
-"""
-    
-    cache_key = get_daily_content_key("mental_model_categories", user_level)
-    ai_content = get_cached_ai_content(cache_key, generate_ai_content, prompt, 1000)
-    
-    # Parse AI response into structured format
-    # This is a simplified parser - in production you'd want more robust parsing
-    categories = {}
-    current_category = None
-    
-    for line in ai_content.split('\n'):
-        line = line.strip()
-        if ':' in line and not line.startswith('-'):
-            parts = line.split(':', 1)
-            if len(parts) == 2:
-                category_key = parts[0].lower().replace(' ', '_').replace('&', 'and')
-                category_name = parts[0]
-                description = parts[1].strip()
-                categories[category_key] = {
-                    "name": category_name,
-                    "description": description,
-                    "models": []
-                }
-                current_category = category_key
-        elif line.startswith('-') and current_category:
-            model = line[1:].strip()
-            if model:
-                categories[current_category]["models"].append(model)
-    
-    # Fallback if parsing fails
-    if not categories:
-        return {
-            "bayesian_thinking": {
-                "name": "Bayesian Thinking",
-                "description": "Update beliefs with evidence and work with probabilities",
-                "models": ["Base Rate Neglect", "Bayes Theorem", "Prior vs Posterior"]
-            }
-        }
-    
-    return categories
-
-def generate_domain_topic_content(domain: str, level: int = 1) -> dict:
-    """Generate AI-powered domain topic content adapted to user level"""
-    
-    difficulty_descriptions = {
-        1: "introductory level with basic concepts",
-        2: "intermediate level with practical applications",
-        3: "advanced level with complex theories", 
-        4: "expert level with cutting-edge research",
-        5: "master level with interdisciplinary connections"
-    }
-    
-    difficulty = difficulty_descriptions.get(level, "intermediate")
-    
-    prompt = f"""
-Generate educational content for a topic in {domain} at {difficulty}.
-
-Provide:
-1. TOPIC: An interesting, specific topic in {domain} appropriate for level {level}
-2. DEFINITION: Clear explanation of the topic
-3. KEY_CONCEPTS: 3-4 important concepts or terms
-4. APPLICATIONS: Real-world applications or examples
-5. DEEPER_DIVE: More advanced aspects for further exploration
-6. QUESTIONS: 2 thought-provoking questions about the topic
-
-Make it engaging, accurate, and educational. Format as plain text.
-"""
-    
-    cache_key = get_daily_content_key(f"domain_topic_{domain}", level)
-    return get_cached_ai_content(cache_key, generate_ai_content, prompt, 800)
 
 # ========== Utilities ==========
 def today_iso() -> str:
@@ -779,10 +798,11 @@ DEFAULT_STATE: Dict[str, Any] = {
             "probabilistic_reasoning": {"lesson": 0, "completed": []},
             "systems_complexity": {"lesson": 0, "completed": []},
             "decision_science": {"lesson": 0, "completed": []},
-            "econ_institutions": {"lesson": 0, "completed": []},
-            "scientific_foundations": {"lesson": 0, "completed": []},
-            "history_data": {"lesson": 0, "completed": []},
-            "computational_literacy": {"lesson": 0, "completed": []}
+            "cognitive_science": {"lesson": 0, "completed": []},
+            "evolutionary_thinking": {"lesson": 0, "completed": []},
+            "information_theory": {"lesson": 0, "completed": []},
+            "game_theory": {"lesson": 0, "completed": []},
+            "network_effects": {"lesson": 0, "completed": []},
         },
         "lesson_history": []
     }
@@ -1226,8 +1246,156 @@ WORLD_MODEL_TRACKS = {
                 "transfer": "Apply to: business projections, personal planning, or investment decisions."
             }
         ]
+    },
+    "cognitive_science": {
+        "name": "Cognitive Science & Mental Models",
+        "lessons": [
+            {
+                "title": "Dual Process Theory (System 1 & 2)",
+                "content": "System 1: Fast, automatic, intuitive thinking. System 2: Slow, deliberate, analytical thinking. Most cognitive biases emerge from System 1's shortcuts. Knowing when to engage System 2 is crucial.",
+                "example": "Stroop effect: naming colors when word and color don't match (RED written in blue). System 1 reads the word automatically, System 2 must override to name the color.",
+                "questions": [
+                    "When should you trust System 1 vs System 2?",
+                    "How can you recognize when biases are active?",
+                    "What triggers analytical thinking?"
+                ],
+                "transfer": "Apply to: financial decisions, hiring judgments, or any high-stakes choices."
+            },
+            {
+                "title": "Mental Models & Analogical Reasoning",
+                "content": "Mental models are simplified representations of how things work. Good models capture essential structure while ignoring irrelevant details. Cross-domain analogies transfer insights between fields.",
+                "example": "Atom model evolved: plum pudding → planetary → quantum orbital. Each model useful for different purposes. Flow dynamics apply to traffic, rivers, and electric current.",
+                "questions": [
+                    "What makes a mental model useful?",
+                    "How do analogies facilitate learning?",
+                    "When do models break down?"
+                ],
+                "transfer": "Apply to: learning new domains, problem-solving, or explaining complex ideas."
+            }
+        ]
+    },
+    "evolutionary_thinking": {
+        "name": "Evolutionary & Adaptive Systems",
+        "lessons": [
+            {
+                "title": "Selection Pressures & Fitness Landscapes",
+                "content": "Evolution optimizes for reproductive fitness, not happiness or truth. Selection pressures shape all adaptive systems: biological, cultural, technological. Fitness landscapes have peaks (good solutions) and valleys (poor solutions).",
+                "example": "Peacock's tail: sexually selected despite survival cost. Business strategy: companies evolve features that attract customers, even if inefficient. Local vs global optima problem.",
+                "questions": [
+                    "What selection pressures shape human behavior?",
+                    "How do systems get trapped in local optima?",
+                    "What drives cultural vs genetic evolution?"
+                ],
+                "transfer": "Apply to: organizational design, product development, or understanding social norms."
+            },
+            {
+                "title": "Red Queen Dynamics & Arms Races",
+                "content": "Red Queen hypothesis: constant evolution needed just to maintain relative fitness. Arms races: competing systems drive each other to greater complexity. Zero-sum competition vs positive-sum cooperation.",
+                "example": "Predator-prey coevolution: cheetahs get faster, antelopes get faster. Technology: virus vs antivirus software. Markets: competitors constantly innovate to maintain advantage.",
+                "questions": [
+                    "When do you see Red Queen dynamics?",
+                    "How can arms races become wasteful?",
+                    "When does cooperation beat competition?"
+                ],
+                "transfer": "Apply to: competitive strategy, technological development, or geopolitical analysis."
+            }
+        ]
+    },
+    "information_theory": {
+        "name": "Information Theory & Communication",
+        "lessons": [
+            {
+                "title": "Entropy, Surprise, and Information Content",
+                "content": "Information = reduction in uncertainty. Entropy measures average surprise. High-probability events carry little information. Compression exploits redundancy patterns.",
+                "example": "Weather report: 'sunny in Phoenix' (low info) vs 'snow in Phoenix' (high info). Language: 'the' appears frequently, 'sesquipedalian' rarely. Zip files work by finding patterns.",
+                "questions": [
+                    "What makes a message informative?",
+                    "How does redundancy relate to compression?",
+                    "Why do rare events feel more significant?"
+                ],
+                "transfer": "Apply to: data analysis, communication strategy, or understanding media attention."
+            },
+            {
+                "title": "Signal vs Noise & Channel Capacity",
+                "content": "Signal = meaningful information. Noise = random interference. Signal-to-noise ratio determines communication quality. Channel capacity limits maximum information transmission rate.",
+                "example": "Conversation in noisy restaurant: must speak louder (amplify signal) or find quieter spot (reduce noise). Email: subject line = high signal, spam = noise.",
+                "questions": [
+                    "How do you improve signal-to-noise ratio?",
+                    "What limits information transmission?",
+                    "How do systems adapt to noisy channels?"
+                ],
+                "transfer": "Apply to: data interpretation, effective communication, or filtering information."
+            }
+        ]
+    },
+    "game_theory": {
+        "name": "Game Theory & Strategic Thinking",
+        "lessons": [
+            {
+                "title": "Nash Equilibrium & Strategic Stability",
+                "content": "Nash equilibrium: no player can improve by unilaterally changing strategy. Represents stable outcome where everyone's strategy is optimal given others' strategies. Multiple equilibria possible.",
+                "example": "Prisoner's dilemma: mutual defection is Nash equilibrium but mutual cooperation gives better outcomes. Traffic conventions: driving on right vs left both stable equilibria.",
+                "questions": [
+                    "What makes a strategy equilibrium stable?",
+                    "Can Nash equilibria be inefficient?",
+                    "How do you find equilibrium points?"
+                ],
+                "transfer": "Apply to: business strategy, negotiations, or understanding social conventions."
+            },
+            {
+                "title": "Coordination vs Competition Games",
+                "content": "Coordination games: players benefit from matching strategies. Competition games: players benefit from different strategies. Mixed-motive games combine both elements.",
+                "example": "Coordination: choosing meeting location, technology standards. Competition: market positioning, resource allocation. Mixed: negotiation has both cooperative and competitive elements.",
+                "questions": [
+                    "When do coordination problems arise?",
+                    "How do you solve coordination failures?",
+                    "What strategies work in mixed-motive games?"
+                ],
+                "transfer": "Apply to: team coordination, industry standards, or international relations."
+            }
+        ]
+    },
+    "network_effects": {
+        "name": "Network Effects & Emergence",
+        "lessons": [
+            {
+                "title": "Scale-Free Networks & Power Laws",
+                "content": "Scale-free networks: few highly connected hubs, many poorly connected nodes. Power law degree distribution. Preferential attachment: rich get richer. Small-world property: short paths between nodes.",
+                "example": "Internet, social networks, citation networks. 80/20 rule emerges naturally. Six degrees of separation. Viral spread depends on network structure, not just transmission rate.",
+                "questions": [
+                    "What creates hub-and-spoke structures?",
+                    "How do power laws emerge naturally?",
+                    "Why are networks robust yet fragile?"
+                ],
+                "transfer": "Apply to: social influence, information spread, or understanding market concentration."
+            },
+            {
+                "title": "Emergence & Phase Transitions",
+                "content": "Emergence: system-level properties not present in components. Phase transitions: sudden qualitative changes from quantitative changes. Critical thresholds and tipping points.",
+                "example": "Consciousness from neurons, traffic jams from individual cars, market crashes from individual trades. Water to ice at 32°F. Social movements reaching critical mass.",
+                "questions": [
+                    "How do simple rules create complex behavior?",
+                    "What triggers sudden system changes?",
+                    "How do you predict phase transitions?"
+                ],
+                "transfer": "Apply to: organizational change, social movements, or technology adoption."
+            }
+        ]
     }
 }
+
+def get_ai_enhanced_tracks():
+    """Get available tracks, potentially enhanced with AI-generated content"""
+    base_tracks = WORLD_MODEL_TRACKS.copy()
+    
+    # If AI is available, could potentially generate new tracks here
+    api_key = get_ai_api_key()
+    if api_key:
+        # For now, return the expanded static tracks
+        # Future: could generate personalized tracks based on user interests
+        pass
+    
+    return base_tracks
 
 def get_current_lesson(track: str) -> Dict[str, Any]:
     """Get the current lesson for a track"""
@@ -2235,70 +2403,20 @@ def page_dashboard():
 
 def page_review():
     page_header("Spaced Repetition")
-    st.caption("AI-powered flashcard review with tag filtering and adaptive scheduling")
-    
-    # Tag filtering section
-    all_cards = S().get("cards", [])
-    available_tags = set()
-    for card in all_cards:
-        available_tags.update(card.get("tags", []))
-    
-    if available_tags:
-        st.markdown("### Filter by Tags/Decks")
-        col1, col2, col3 = st.columns([2, 1, 1])
-        
-        with col1:
-            selected_tags = st.multiselect(
-                "Select tags to study:",
-                sorted(available_tags),
-                key="review_tag_filter",
-                help="Choose specific tags/decks to focus your review session"
-            )
-        
-        with col2:
-            if st.button("Study All Tags", help="Remove tag filter"):
-                st.session_state["review_tag_filter"] = []
-                if "review_queue" in st.session_state:
-                    del st.session_state["review_queue"]
-                st.rerun()
-        
-        with col3:
-            if selected_tags and st.button("Apply Filter"):
-                if "review_queue" in st.session_state:
-                    del st.session_state["review_queue"]
-                st.rerun()
-    
-    # Get filtered due cards
-    tag_filter = st.session_state.get("review_tag_filter", [])
+    st.caption("Flip → grade: Again/Hard/Good/Easy (SM-2).")
 
     # Always get fresh due cards and randomize them each time
-    if "review_queue" not in st.session_state or st.button("Refresh Cards", help="Get fresh randomized cards"):
+    if "review_queue" not in st.session_state or st.button("🔄 Refresh Cards", help="Get fresh randomized cards"):
         fresh_due_cards = due_cards(S())
-        
-        # Apply tag filter if selected
-        if tag_filter:
-            fresh_due_cards = [
-                card for card in fresh_due_cards 
-                if any(tag in card.get("tags", []) for tag in tag_filter)
-            ]
-        
         # Double randomization to ensure proper shuffling
         random.shuffle(fresh_due_cards)
         st.session_state["review_queue"] = fresh_due_cards
         st.session_state["current_card"] = None
         st.session_state["show_back"] = False
-    
+
     rq = st.session_state["review_queue"]
-    
-    # Show current filter status
-    if tag_filter:
-        st.info(f"Reviewing cards with tags: {', '.join(tag_filter)} ({len(rq)} cards)")
-    
     if not rq and not st.session_state.get("current_card"):
-        if tag_filter:
-            st.success("All cards with selected tags completed! Nice work!")
-        else:
-            st.success("All due cards completed! Nice work!")
+        st.success("All done for now. Nice work!")
         # Mark review as completed when queue is empty
         mark_completed("review")
         if st.button("Reload due cards"):
@@ -2539,701 +2657,180 @@ def page_card_management():
 
 # ----- Topic Study Page -----
 def page_topic_study():
-    page_header("Domain Knowledge Study")
-    st.caption("AI-powered domain learning with adaptive difficulty progression")
+    page_header("Daily Topic Study")
+    st.caption("Build your knowledge base with AI-generated topics for deep domain expertise.")
     
-    # Initialize domain learning system
-    if "domain_learning" not in S():
-        S()["domain_learning"] = {
-            "domains": {
-                "psychology": {"level": 1, "xp": 0, "completed_topics": []},
-                "neuroscience": {"level": 1, "xp": 0, "completed_topics": []},
-                "philosophy": {"level": 1, "xp": 0, "completed_topics": []},
-                "economics": {"level": 1, "xp": 0, "completed_topics": []},
-                "probability": {"level": 1, "xp": 0, "completed_topics": []},
-                "history": {"level": 1, "xp": 0, "completed_topics": []},
-                "cognitive_science": {"level": 1, "xp": 0, "completed_topics": []},
-                "mathematics": {"level": 1, "xp": 0, "completed_topics": []},
-                "physics": {"level": 1, "xp": 0, "completed_topics": []},
-                "biology": {"level": 1, "xp": 0, "completed_topics": []}
-            },
-            "daily_studies": {},
-            "selected_domain": None
-        }
-    
-    # Check for AI configuration
-    if not st.session_state.get("ai_api_key"):
-        st.warning("AI content generation requires API configuration. Please visit Settings to configure your AI provider.")
-        st.info("Using fallback content for demonstration.")
-    
-    # Check if already completed topic study today
-    today = today_iso()
-    daily_studies = S()["domain_learning"]["daily_studies"]
-    completed_today = daily_studies.get(today, None)
-    
-    if completed_today:
-        st.success("Domain study completed for today!")
-        st.markdown(f"### Today's Study: {completed_today['topic']}")
-        st.markdown(f"**Domain**: {completed_today['domain'].replace('_', ' ').title()}")
-        rating_display = "★" * completed_today['understanding'] + "☆" * (5 - completed_today['understanding'])
-        st.markdown(f"**Understanding**: {rating_display} ({completed_today['understanding']}/5)")
-        if completed_today.get('notes'):
-            st.markdown(f"**Your Notes**: {completed_today['notes']}")
+    # Check if already completed today
+    if is_completed_today("topic_study"):
+        st.success("Topic study completed for today!")
+        st.info("Come back tomorrow for a new topic suggestion.")
         
-        # Show XP gained
-        xp_gained = completed_today.get('xp_gained', 0)
-        if xp_gained > 0:
-            st.info(f"XP Gained: +{xp_gained} in {completed_today['domain'].replace('_', ' ').title()}")
-            
+        # Show today's completed topic
+        ts = S()["topic_suggestions"]
+        if ts["study_history"]:
+            latest = ts["study_history"][-1]
+            if latest["date"] == today_iso():
+                st.markdown(f"### Today's Topic: {latest['title']}")
+                rating = latest["understanding_rating"]
+                stars = "*" * rating + "-" * (5 - rating)
+                st.write(f"**Your Rating**: {stars} ({rating}/5)")
+                if latest["notes"]:
+                    st.write(f"**Your Notes**: {latest['notes']}")
         return
-    
-    # Domain selection and progress overview
-    st.markdown("### Knowledge Domains")
-    
-    domains = S()["domain_learning"]["domains"]
-    
-    # Display domain levels in a grid (without emojis)
-    cols = st.columns(3)
-    for i, (domain_key, domain_data) in enumerate(domains.items()):
-        with cols[i % 3]:
-            level = domain_data["level"]
-            xp = domain_data["xp"]
-            completed_count = len(domain_data["completed_topics"])
-            
-            # Calculate XP needed for next level (100 XP per level)
-            xp_for_next = level * 100
-            xp_progress = xp % 100
-            
-            domain_name = domain_key.replace('_', ' ').title()
-            
-            # Level badges (text-based)
-            if level >= 5:
-                badge = "[GOLD]"
-            elif level >= 3:
-                badge = "[SILVER]"  
-            else:
-                badge = "[BRONZE]"
-                
-            st.metric(
-                f"{badge} {domain_name}",
-                f"Level {level}",
-                f"{completed_count} topics"
-            )
-            
-            # XP Progress bar
-            progress = xp_progress / 100.0
-            st.progress(progress)
-            st.caption(f"{xp_progress}/100 XP to Level {level + 1}")
-    
-    st.markdown("---")
-    
-    # Domain selection for today's study
-    st.markdown("### Choose Today's Focus Domain")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Check if domain was pre-selected from dashboard
-        domain_options = list(domains.keys())
-        domain_names = [d.replace('_', ' ').title() for d in domain_options]
-        
-        default_index = 0
-        if "selected_category" in st.session_state:
-            try:
-                default_index = domain_options.index(st.session_state["selected_category"])
-            except ValueError:
-                pass
-        
-        selected_domain_name = st.selectbox(
-            "Select domain for today's study:",
-            domain_names,
-            index=default_index,
-            help="Choose a domain to focus your learning session"
-        )
-        
-        selected_domain = domain_options[domain_names.index(selected_domain_name)]
-        domain_data = domains[selected_domain]
-        current_level = domain_data["level"]
-    
-    with col2:
-        st.metric("Current Level", current_level)
-        st.metric("Completed Topics", len(domain_data["completed_topics"]))
-    
-    if st.button("Generate Today's Topic", type="primary"):
-        with st.spinner("AI is generating today's topic..."):
-            # Generate topic content using AI
-            topic_content = generate_domain_topic_content(selected_domain, current_level)
-            
-            if isinstance(topic_content, str) and topic_content:
-                # Parse AI content (simplified parsing)
-                lines = topic_content.split('\n')
-                topic_title = "AI-Generated Topic"
-                
-                # Try to extract topic title
-                for line in lines:
-                    if 'TOPIC:' in line.upper():
-                        topic_title = line.split(':', 1)[1].strip()
-                        break
-                
-                st.markdown(f"### Today's Topic: {topic_title}")
-                st.markdown(f"**Domain**: {selected_domain.replace('_', ' ').title()}")
-                st.markdown(f"**Level**: {current_level}")
-                
-                # Display the generated content
-                st.markdown("### Learning Content")
-                st.markdown(topic_content)
-                
-                st.markdown("---")
-                
-                # Study completion section
-                st.markdown("### Complete Your Study Session")
-                
-                col1, col2 = st.columns([3, 1])
-                
-                with col1:
-                    understanding = st.slider(
-                        "Rate your understanding of this topic:",
-                        1, 5, 3,
-                        help="1 = Confused, 5 = Could teach others"
-                    )
-                    
-                    notes = st.text_area(
-                        "Study notes (optional):",
-                        placeholder="Key insights, questions, or connections you made...",
-                        height=100
-                    )
-                
-                with col2:
-                    if st.button("Complete Study", type="primary"):
-                        # Calculate XP based on understanding and level
-                        base_xp = 20
-                        level_multiplier = current_level * 0.5
-                        understanding_bonus = understanding * 5
-                        total_xp = int(base_xp + level_multiplier + understanding_bonus)
-                        
-                        # Record completion
-                        daily_studies[today] = {
-                            "domain": selected_domain,
-                            "topic": topic_title,
-                            "understanding": understanding,
-                            "notes": notes,
-                            "level": current_level,
-                            "xp_gained": total_xp,
-                            "completed_time": now_ts()
-                        }
-                        
-                        # Update domain progress
-                        domain_data["xp"] += total_xp
-                        domain_data["completed_topics"].append({
-                            "topic": topic_title,
-                            "date": today,
-                            "understanding": understanding,
-                            "level": current_level
-                        })
-                        
-                        # Check for level up (100 XP per level)
-                        new_level = min(5, (domain_data["xp"] // 100) + 1)
-                        if new_level > current_level:
-                            domain_data["level"] = new_level
-                            st.success(f"Level up! {selected_domain.replace('_', ' ').title()} is now Level {new_level}!")
-                        
-                        # Generate flashcard for spaced repetition if understanding is good
-                        if understanding >= 3:
-                            create_flashcard_from_domain_topic(selected_domain, topic_title, topic_content)
-                        
-                        save_state()
-                        st.success(f"Study session completed! Gained {total_xp} XP in {selected_domain.replace('_', ' ').title()}")
-                        st.rerun()
-            else:
-                st.error("Failed to generate topic content. Please check your AI configuration.")
 
-def create_flashcard_from_domain_topic(domain: str, topic: str, content: str):
-    """Create a flashcard for spaced repetition from domain topic content"""
-    if "cards" not in S():
-        return
+    # Domain selection and today's topic assignment
+    st.markdown("### Today's Learning Assignment")
     
-    # Extract key information for flashcard
-    front = f"Domain Study: {topic}"
-    back = content[:500] + "..." if len(content) > 500 else content
-    
-    card = Card(
-        cid=uuid.uuid4().hex,
-        front=front,
-        back=back,
-        tags=[domain, "domain_study", "daily_topic"]
-    )
-    
-    S()["cards"].append(card)
-    save_state()
-
-# ----- Card Management -----
-                f"Level {level}",
-                f"{completed_count} topics"
-            )
-            
-            # XP Progress bar
-            progress = xp_progress / 100.0
-            st.progress(progress)
-            st.caption(f"{xp_progress}/100 XP to Level {level + 1}")
-    
-    st.markdown("---")
-    
-    # Domain selection for today's study
-    st.markdown("### 🎯 Choose Today's Focus Domain")
-    
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([3, 1])
     
     with col1:
-        # Check if domain was pre-selected from dashboard
-        domain_options = list(domains.keys())
-        domain_names = [d.replace('_', ' ').title() for d in domain_options]
+        # Check if user has a manually selected domain preference for today
+        today_key = f"domain_preference_{today_iso()}"
+        selected_domain = st.session_state.get(today_key, "Random")
         
-        default_index = 0
-        if "selected_category" in st.session_state:
-            selected_category = st.session_state["selected_category"].lower().replace(' ', '_')
-            if selected_category in domain_options:
-                default_index = domain_options.index(selected_category)
-        
-        selected_domain_name = st.selectbox(
-            "Select domain to study:",
-            domain_names,
-            index=default_index,
-            key="domain_study_select"
-        )
-        
-        selected_domain = domain_options[domain_names.index(selected_domain_name)]
-        domain_info = domains[selected_domain]
-        
-    with col2:
-        if st.button("🎲 Surprise Me!", help="Pick a random domain for balanced learning"):
-            selected_domain = random.choice(domain_options)
-            selected_domain_name = selected_domain.replace('_', ' ').title()
-    
-    # Generate topic for selected domain
-    current_topic = generate_domain_topic(selected_domain, domain_info["level"])
-    
-    # Display today's topic
-    st.markdown(f"### 📖 Today's {selected_domain_name} Topic")
-    
-    with st.container(border=True):
-        st.markdown(f"**{current_topic['title']}**")
-        st.markdown(f"*Level {current_topic['level']} • {current_topic['category']}*")
-        st.info(current_topic['description'])
-        
-        if current_topic.get('prerequisites'):
-            st.caption(f"**Prerequisites**: {', '.join(current_topic['prerequisites'])}")
-    
-    # Learning content
-    col1, col2 = st.columns([3, 2])
-    
-    with col1:
-        st.markdown("#### 📚 Core Concept")
-        st.markdown(current_topic['content'])
-        
-        st.markdown("#### 💡 Real-World Applications")
-        for application in current_topic['applications']:
-            st.write(f"• {application}")
-            
-        st.markdown("#### 🔗 Connections")
-        st.success(current_topic['connections'])
-        
-    with col2:
-        st.markdown("#### 🎯 Key Terms")
-        for term, definition in current_topic['key_terms'].items():
-            with st.expander(f"**{term}**"):
-                st.write(definition)
-        
-        st.markdown("#### 📈 Level Progress")
-        current_level = domain_info["level"]
-        topics_completed = len(domain_info["completed_topics"])
-        
-        # Show progression path
-        st.write(f"**Current Level**: {current_level}")
-        st.write(f"**Topics Completed**: {topics_completed}")
-        
-        if current_level < 5:
-            topics_for_next = current_level * 5  # 5, 10, 15, 20 topics per level
-            st.write(f"**Next Level**: {topics_for_next - topics_completed} more topics")
-    
-    # Study questions and exercises
-    st.markdown("### 🧠 Active Learning")
-    
-    study_responses = {}
-    for i, question in enumerate(current_topic['questions']):
-        st.markdown(f"**Question {i+1}:** {question['prompt']}")
-        response = st.text_area(f"Your response:", key=f"study_q{i}", height=100)
-        study_responses[f"q{i}"] = response
-        
-        if response.strip():
-            with st.expander("💭 Guided Reflection"):
-                st.write(f"**Think about**: {question['reflection_guide']}")
-                st.info(f"**Key concepts to consider**: {question['key_concepts']}")
-    
-    # Practical exercise
-    if current_topic.get('exercise'):
-        st.markdown("### 🛠️ Practical Exercise")
-        st.warning(current_topic['exercise'])
-        
-        exercise_response = st.text_area(
-            "Your approach/solution:",
-            key="exercise_response",
-            height=120,
-            placeholder="Describe your thinking process and solution..."
-        )
-        study_responses['exercise'] = exercise_response
-    
-    # Add key terms to flashcards section
-    with st.expander("📚 Add Key Terms to Flashcards", expanded=False):
-        st.write("Generate key terms from this topic to add to your spaced repetition study:")
-        
-        # Generate suggested terms based on current topic
-        suggested_terms = generate_key_terms_from_topic(current_topic)
-        
-        if suggested_terms:
-            st.subheader("Suggested Terms:")
-            selected_terms = []
-            for i, term_data in enumerate(suggested_terms):
-                if st.checkbox(f"**{term_data['term']}**: {term_data['definition']}", key=f"term_{i}"):
-                    selected_terms.append(term_data)
-            
-            # Allow custom term addition
-            st.subheader("Add Custom Term:")
-            with st.form("custom_term_form"):
-                custom_term = st.text_input("Term:")
-                custom_definition = st.text_area("Definition:")
-                if st.form_submit_button("Add Custom Term"):
-                    if custom_term and custom_definition:
-                        if 'custom_terms' not in st.session_state:
-                            st.session_state.custom_terms = []
-                        st.session_state.custom_terms.append({"term": custom_term, "definition": custom_definition})
-                        st.success(f"Added custom term: {custom_term}")
-            
-            # Include any custom terms
-            if 'custom_terms' in st.session_state:
-                for custom_term in st.session_state.custom_terms:
-                    if st.checkbox(f"**{custom_term['term']}** (custom): {custom_term['definition']}", 
-                                 key=f"custom_{custom_term['term']}"):
-                        selected_terms.append(custom_term)
-            
-            # Add selected terms to flashcards
-            if st.button("Add Selected Terms to Flashcards", type="primary"):
-                if selected_terms:
-                    for term in selected_terms:
-                        add_card(
-                            term['term'], 
-                            term['definition'], 
-                            [selected_domain, 'domain-study', 'key-terms']
-                        )
-                    st.success(f"Added {len(selected_terms)} terms to your flashcard deck!")
-                    for term in selected_terms:
-                        st.write(f"✓ {term['term']}")
-                    
-                    # Clear custom terms after adding
-                    if 'custom_terms' in st.session_state:
-                        del st.session_state.custom_terms
-                else:
-                    st.warning("Please select at least one term to add.")
-    
-    # Completion form
-    st.markdown("### ✅ Complete Your Study Session")
-    with st.form("complete_domain_study"):
-        understanding = st.slider(
-            "How well do you understand this topic?", 
-            1, 5, 3,
-            help="1=Confused, 2=Somewhat unclear, 3=Basic understanding, 4=Good grasp, 5=Could teach others"
-        )
-        
-        notes = st.text_area(
-            "Personal notes or insights (optional)",
-            placeholder="Key takeaways, connections to other topics, questions for further study...",
-            height=100
-        )
-        
-        if st.form_submit_button("Complete Domain Study Session", type="primary"):
-            # Calculate XP based on understanding and level
-            base_xp = 20
-            understanding_bonus = understanding * 5
-            level_multiplier = 1 + (domain_info["level"] - 1) * 0.2
-            xp_gained = int((base_xp + understanding_bonus) * level_multiplier)
-            
-            # Update domain progress
-            domains[selected_domain]["xp"] += xp_gained
-            domains[selected_domain]["completed_topics"].append(current_topic['title'])
-            
-            # Check for level up
-            current_xp = domains[selected_domain]["xp"]
-            new_level = (current_xp // 100) + 1
-            old_level = domains[selected_domain]["level"]
-            
-            if new_level > old_level:
-                domains[selected_domain]["level"] = new_level
-                level_up_msg = f"🎉 Level Up! {selected_domain_name} is now Level {new_level}!"
+        # Get or generate today's topic
+        daily_topic_key = f"daily_topic_{today_iso()}"
+        if daily_topic_key not in st.session_state:
+            # Generate today's topic based on domain preference
+            if selected_domain == "Random":
+                topic = generate_intelligent_topic()
             else:
-                level_up_msg = None
+                domain_key = selected_domain.lower().replace(' ', '_')
+                topic = generate_intelligent_topic(domain_key)
+            st.session_state[daily_topic_key] = topic
+        else:
+            topic = st.session_state[daily_topic_key]
+        
+        # Display today's assigned topic
+        with st.container(border=True):
+            st.markdown(f"**Today's Topic: {topic['topic']}**")
+            st.markdown(f"*Domain: {topic['domain'].replace('_', ' ').title()}* | *Level {topic['level']}*")
+            st.info(topic['description'])
+            st.caption(f"Duration: {topic['suggested_duration']} | Objective: {topic['learning_objective']}")
             
-            # Record daily study
-            daily_studies[today] = {
-                "domain": selected_domain,
-                "topic": current_topic['title'],
-                "level": current_topic['level'],
-                "understanding": understanding,
-                "notes": notes,
-                "responses": study_responses,
-                "xp_gained": xp_gained,
-                "completed_at": datetime.now().isoformat()
-            }
+            # Action buttons
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("Start Studying", key="start_study", use_container_width=True):
+                    update_topic_progress(topic['domain'], topic['topic'])
+                    st.success(f"Started studying: {topic['topic']}")
+                    st.rerun()
             
-            # Mark as completed
-            mark_completed("topic_study")
-            save_state()
+            with col_b:
+                if st.button("Mark as Mastered", key="master_topic", use_container_width=True):
+                    level_up_msg = update_topic_progress(topic['domain'], topic['topic'], mastered=True)
+                    if level_up_msg:
+                        st.success(level_up_msg)
+                    else:
+                        st.success("Topic mastered!")
+                    st.rerun()
+    
+    with col2:
+        st.markdown("**Change Domain:**")
+        
+        # Domain options
+        domains = list(S().get("topic_suggestions", {}).get("knowledge_domains", {}).keys())
+        if not domains:
+            domains = ["philosophy", "neuroscience", "psychology", "economics"]
+        
+        domain_options = ["Random"] + [d.replace('_', ' ').title() for d in domains]
+        current_selection = st.selectbox("Choose Domain:", domain_options, 
+                                       index=domain_options.index(selected_domain) if selected_domain in domain_options else 0)
+        
+        if st.button("Get New Topic", key="new_daily_topic"):
+            # Update domain preference and generate new topic
+            st.session_state[today_key] = current_selection
             
-            st.success("Domain study completed! Great work!")
-            if level_up_msg:
-                st.balloons()
-                st.success(level_up_msg)
-            st.info(f"🎯 **XP Gained**: +{xp_gained} in {selected_domain_name}")
+            if current_selection == "Random":
+                new_topic = generate_intelligent_topic()
+            else:
+                domain_key = current_selection.lower().replace(' ', '_')
+                new_topic = generate_intelligent_topic(domain_key)
+            
+            st.session_state[daily_topic_key] = new_topic
             st.rerun()
+    
+    # Domain Progress Overview
+    st.markdown("### Domain Progress")
+    domains = S().get("topic_suggestions", {}).get("knowledge_domains", {})
+    if domains:
+        cols = st.columns(min(len(domains), 4))
+        for i, (domain, data) in enumerate(domains.items()):
+            level = data.get("level", 1)
+            mastered_count = len(data.get("recent_topics", []))
+            
+            with cols[i % len(cols)]:
+                progress_stars = "★" * min(level, 5) + "☆" * max(0, 5 - level)
+                st.metric(
+                    domain.replace('_', ' ').title(),
+                    f"Level {level}",
+                    f"{mastered_count} mastered"
+                )
+                st.caption(progress_stars)
+    
+    st.markdown("---")
 
-def generate_domain_topic(domain, current_level):
-    """Generate a topic appropriate for the domain and level"""
-    
-    # Topic database organized by domain and level
-    topic_database = {
-        "psychology": {
-            1: [
-                {
-                    "title": "Classical Conditioning",
-                    "category": "Learning Theory",
-                    "level": 1,
-                    "description": "How we learn to associate stimuli with responses through repeated pairing.",
-                    "content": "Classical conditioning, discovered by Ivan Pavlov, demonstrates how neutral stimuli can become associated with automatic responses. The process involves pairing an unconditioned stimulus (food) with a neutral stimulus (bell) until the neutral stimulus alone triggers the response (salivation). This fundamental learning mechanism explains many human behaviors, from phobias to advertising effectiveness.",
-                    "applications": [
-                        "Therapy for phobias and anxiety disorders",
-                        "Understanding addiction and cravings", 
-                        "Marketing and consumer behavior",
-                        "Educational techniques and habit formation"
-                    ],
-                    "connections": "Classical conditioning connects to operant conditioning, cognitive-behavioral therapy, and neuroscience research on learning and memory. It's foundational to understanding how experiences shape behavior automatically.",
-                    "key_terms": {
-                        "Unconditioned Stimulus": "A stimulus that naturally triggers a response without learning",
-                        "Conditioned Stimulus": "A previously neutral stimulus that triggers a response after conditioning",
-                        "Extinction": "The gradual weakening of a conditioned response when the CS is repeatedly presented without the US",
-                        "Generalization": "The tendency to respond to stimuli similar to the original conditioned stimulus"
-                    },
-                    "questions": [
-                        {
-                            "prompt": "How might classical conditioning explain why you feel anxious when you hear your alarm clock?",
-                            "reflection_guide": "Think about the pairing of the alarm sound with the stress of waking up and rushing.",
-                            "key_concepts": "Neutral stimulus (alarm), unconditioned response (stress), conditioning over time"
-                        },
-                        {
-                            "prompt": "Why do advertisers often pair their products with pleasant music or attractive people?",
-                            "reflection_guide": "Consider how positive associations can be transferred to products through conditioning.",
-                            "key_concepts": "Transfer of emotional responses, commercial applications of conditioning"
-                        }
-                    ],
-                    "exercise": "Identify a personal habit or emotional response you have. Trace it back to see if classical conditioning might explain its development. What was the original pairing?"
-                }
-            ],
-            2: [
-                {
-                    "title": "Cognitive Dissonance Theory",
-                    "category": "Social Psychology", 
-                    "level": 2,
-                    "description": "The mental discomfort when our beliefs, attitudes, or behaviors conflict with each other.",
-                    "content": "Leon Festinger's cognitive dissonance theory explains the psychological tension we experience when we hold contradictory beliefs or when our actions don't align with our values. To reduce this discomfort, we often change our attitudes, justify our behavior, or minimize the importance of the conflict. This powerful psychological force influences decision-making, belief formation, and behavior change.",
-                    "applications": [
-                        "Understanding resistance to changing beliefs",
-                        "Marketing strategies (foot-in-the-door technique)",
-                        "Therapy and behavior change interventions",
-                        "Political psychology and belief polarization"
-                    ],
-                    "connections": "Cognitive dissonance relates to confirmation bias, rationalization, self-justification, and various decision-making heuristics. It's crucial for understanding attitude change and social influence.",
-                    "key_terms": {
-                        "Cognitive Dissonance": "Mental discomfort from holding contradictory beliefs or acting against beliefs",
-                        "Dissonance Reduction": "Strategies used to minimize psychological discomfort from conflicting cognitions",
-                        "Post-Decision Dissonance": "Regret or doubt experienced after making a difficult choice",
-                        "Effort Justification": "Valuing something more highly because you worked hard to achieve it"
-                    },
-                    "questions": [
-                        {
-                            "prompt": "Why might someone who buys an expensive car suddenly become very critical of other car brands?",
-                            "reflection_guide": "Think about how people justify major purchases to reduce dissonance.",
-                            "key_concepts": "Post-decision dissonance, selective attention, justification of choices"
-                        },
-                        {
-                            "prompt": "How does cognitive dissonance explain why people often become more committed to a cause after making sacrifices for it?",
-                            "reflection_guide": "Consider effort justification and the need to make sacrifices feel worthwhile.",
-                            "key_concepts": "Effort justification, escalation of commitment, sunk cost psychology"
-                        }
-                    ],
-                    "exercise": "Think of a time when you experienced cognitive dissonance. What conflicting beliefs or behaviors were involved? How did you resolve the dissonance?"
-                }
-            ]
-        },
-        "neuroscience": {
-            1: [
-                {
-                    "title": "Neuroplasticity Fundamentals",
-                    "category": "Brain Development",
-                    "level": 1,
-                    "description": "The brain's remarkable ability to reorganize and form new neural connections throughout life.",
-                    "content": "Neuroplasticity refers to the brain's capacity to change its structure and function in response to experience. This includes forming new synapses, strengthening existing connections, and even generating new neurons in certain brain regions. Neuroplasticity occurs throughout life but is most pronounced during critical periods in development. Understanding neuroplasticity has revolutionized neuroscience and rehabilitation medicine.",
-                    "applications": [
-                        "Stroke recovery and rehabilitation",
-                        "Learning and skill acquisition",
-                        "Treatment of mental health disorders",
-                        "Educational strategies and brain training"
-                    ],
-                    "connections": "Neuroplasticity underlies learning, memory formation, recovery from brain injury, and the effectiveness of cognitive therapies. It connects to concepts in psychology, education, and medicine.",
-                    "key_terms": {
-                        "Synaptic Plasticity": "Changes in the strength of connections between neurons",
-                        "Structural Plasticity": "Physical changes in brain anatomy, including new neuron growth",
-                        "Critical Period": "Time windows when the brain is especially sensitive to certain experiences",
-                        "Neurogenesis": "The formation of new neurons in the adult brain"
-                    },
-                    "questions": [
-                        {
-                            "prompt": "How does neuroplasticity explain why intensive practice can lead to expertise in a skill?",
-                            "reflection_guide": "Think about how repeated use strengthens neural pathways.",
-                            "key_concepts": "Synaptic strengthening, myelin formation, dedicated brain regions"
-                        },
-                        {
-                            "prompt": "Why might learning a second language be easier for children than adults?",
-                            "reflection_guide": "Consider critical periods and developmental plasticity.",
-                            "key_concepts": "Critical periods, developmental plasticity, language acquisition"
-                        }
-                    ],
-                    "exercise": "Choose a skill you've developed (playing an instrument, typing, sports). Describe how neuroplasticity might have changed your brain as you learned this skill."
-                }
-            ]
-        }
-        # Add more domains and levels here...
-    }
-    
-    # Get topics for the domain and level, or fall back to level 1
-    domain_topics = topic_database.get(domain, {})
-    level_topics = domain_topics.get(current_level, domain_topics.get(1, []))
-    
-    if level_topics:
-        # Select a random topic from the appropriate level
-        return random.choice(level_topics)
-    else:
-        # Fallback topic
-        return {
-            "title": f"Advanced {domain.replace('_', ' ').title()} Topic",
-            "category": "Advanced Study",
-            "level": current_level,
-            "description": f"An advanced topic in {domain.replace('_', ' ')} suitable for level {current_level} study.",
-            "content": f"This topic explores advanced concepts in {domain.replace('_', ' ')} that build on foundational knowledge.",
-            "applications": ["Research applications", "Practical implementations", "Theoretical understanding"],
-            "connections": f"This topic connects to broader themes in {domain.replace('_', ' ')} and related fields.",
-            "key_terms": {
-                "Key Concept": "An important idea in this domain",
-                "Advanced Principle": "A sophisticated understanding of the topic"
-            },
-            "questions": [
-                {
-                    "prompt": f"How does this topic relate to your existing knowledge of {domain.replace('_', ' ')}?",
-                    "reflection_guide": "Think about connections and applications.",
-                    "key_concepts": "Integration with prior knowledge"
-                }
-            ],
-            "exercise": "Apply this concept to a real-world scenario you're familiar with."
-        }
+    # Study Material for today's topic
+    st.markdown(f"### Study: {topic['topic']}")
     
     # Topic metadata
     col1, col2, col3 = st.columns(3)
     with col1:
-        difficulty_emoji = {"easy": "🟢", "medium": "🟡", "hard": "🔴"}
-        difficulty = topic.get('difficulty', 1)
-        if isinstance(difficulty, int):
-            difficulty_text = ["easy", "medium", "hard"][min(difficulty-1, 2)]
-        else:
-            difficulty_text = str(difficulty)
-        st.write(f"**Difficulty**: {difficulty_emoji.get(difficulty_text, '⚪')} {difficulty_text.title()}")
+        st.write(f"**Domain**: {topic['domain'].replace('_', ' ').title()}")
     with col2:
-        category = topic.get('category', 'General')
-        st.write(f"**Category**: {category.title()}")
+        st.write(f"**Level**: {topic['level']}")
     with col3:
-        if topic.get("prerequisites"):
-            st.write(f"**Prerequisites**: {', '.join(topic['prerequisites'])}")
-        else:
-            st.write("**Prerequisites**: None")
+        st.write(f"**Duration**: {topic['suggested_duration']}")
     
-    description = topic.get('description', 'A topic to expand your knowledge.')
-    st.markdown(f"**Overview**: {description}")
+    st.markdown(f"**Learning Objective**: {topic['learning_objective']}")
     
-    # Main content
-    with st.expander("Study Material", expanded=True):
-        content = topic.get('content', 'Study this topic and expand your understanding.')
-        st.markdown(content)
+    # Generate detailed content using AI
+    if st.button("Generate Study Material", key="generate_content"):
+        with st.spinner("Generating comprehensive study material..."):
+            detailed_content = generate_ai_content(
+                f"Create comprehensive study material for the topic: {topic['topic']} in the domain of {topic['domain']}. "
+                f"Include: 1) Core concepts and definitions, 2) Key principles, 3) Examples and applications, "
+                f"4) Common misconceptions, 5) Connections to related topics. "
+                f"Make it suitable for someone at level {topic['level']} understanding."
+            )
+            st.session_state[f"content_{daily_topic_key}"] = detailed_content
+            st.rerun()
     
-    # Self-assessment questions
-    with st.expander("🤔 Check Your Understanding"):
-        questions = topic.get('questions', [
-            "What are the key concepts in this topic?",
-            "How does this relate to other topics you've studied?", 
-            "What practical applications can you think of?"
-        ])
-        for i, question in enumerate(questions, 1):
-            st.write(f"**{i}.** {question}")
+    # Display generated content
+    content_key = f"content_{daily_topic_key}"
+    if content_key in st.session_state:
+        with st.expander("Study Material", expanded=True):
+            st.markdown(st.session_state[content_key])
         
-        st.info("**Tip**: Try to answer these questions mentally before moving on.")
-    
-    # Applications
-    with st.expander("🔧 Real-World Applications"):
-        applications = topic.get('applications', [
-            "Critical thinking and problem solving",
-            "Decision making in personal and professional contexts",
-            "Understanding complex systems and relationships"
-        ])
-        for app in applications:
-            st.write(f"• {app}")
-    
-    # Key Terms for Flashcards
-    with st.expander("📚 Add Key Terms to Flashcards", expanded=False):
-        st.markdown("**Extract important terms from this topic to add to your spaced repetition cards:**")
-        
-        # Generate suggested key terms based on the topic
-        suggested_terms = generate_key_terms_from_topic(topic)
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.markdown("**Suggested Terms:**")
-            selected_terms = []
-            
-            for term_data in suggested_terms:
-                term = term_data['term']
-                definition = term_data['definition']
-                if st.checkbox(f"**{term}**", key=f"term_{term}"):
-                    selected_terms.append(term_data)
-                    st.caption(f"*{definition}*")
-        
-        with col2:
-            st.markdown("**Add Custom Term:**")
-            with st.form("add_custom_term"):
-                custom_term = st.text_input("Term/Concept", placeholder="e.g., Bayes' Theorem")
-                custom_definition = st.text_area("Definition", placeholder="P(A|B) = P(B|A) × P(A) / P(B)", height=100)
-                
-                if st.form_submit_button("Add Custom Term"):
-                    if custom_term and custom_definition:
-                        add_card(custom_term, custom_definition, [topic.get('category', 'study').lower()])
-                        st.success(f"Added '{custom_term}' to your flashcards!")
-                        st.rerun()
-        
-        # Add selected terms to flashcards
-        if selected_terms:
-            if st.button(f"Add {len(selected_terms)} Selected Terms to Flashcards", key="add_selected_terms"):
-                for term_data in selected_terms:
-                    add_card(
-                        term_data['term'], 
-                        term_data['definition'], 
-                        [topic.get('category', 'study').lower(), 'key-terms']
-                    )
-                st.success(f"Added {len(selected_terms)} terms to your flashcards!")
+        # Self-assessment questions
+        with st.expander("Check Your Understanding"):
+            if st.button("Generate Practice Questions", key="generate_questions"):
+                questions = generate_ai_content(
+                    f"Create 5 thoughtful questions to test understanding of: {topic['topic']}. "
+                    f"Include a mix of conceptual, application, and analytical questions."
+                )
+                st.session_state[f"questions_{daily_topic_key}"] = questions
                 st.rerun()
+            
+            questions_key = f"questions_{daily_topic_key}"
+            if questions_key in st.session_state:
+                st.markdown(st.session_state[questions_key])
+        
+        # Key Terms for Flashcards
+        with st.expander("Add Key Terms to Flashcards"):
+            if st.button("Extract Key Terms", key="extract_terms"):
+                terms_content = generate_ai_content(
+                    f"Extract 5-7 key terms and concepts from the topic: {topic['topic']}. "
+                    f"For each term, provide a clear, concise definition suitable for flashcards. "
+                    f"Format as: **Term**: Definition"
+                )
+                st.session_state[f"terms_{daily_topic_key}"] = terms_content
+                st.rerun()
+            
+            terms_key = f"terms_{daily_topic_key}"
+            if terms_key in st.session_state:
+                st.markdown(st.session_state[terms_key])
+                st.caption("Copy important terms to create your own flashcards in the Spaced Repetition section.")
 
     # Completion form
     st.markdown("### Complete Your Study")
@@ -3251,12 +2848,12 @@ def generate_domain_topic(domain, current_level):
         )
         
         if st.form_submit_button("Complete Topic Study"):
-            topic_key = topic.get('key', f"topic_{today_iso()}")
-            complete_topic_study(topic_key, understanding, notes)
+            complete_topic_study(topic['topic'], understanding, notes)
             st.success("Topic study completed! Great work!")
-            # Clear the selected topic so a new one will be generated tomorrow
-            if "selected_topic" in st.session_state:
-                del st.session_state["selected_topic"]
+            # Clean up session state for tomorrow
+            keys_to_remove = [k for k in st.session_state.keys() if daily_topic_key in k]
+            for key in keys_to_remove:
+                del st.session_state[key]
             st.rerun()
     
     # Study progress
@@ -3278,15 +2875,6 @@ def generate_domain_topic(domain, current_level):
         for study in reversed(recent):
             rating_stars = "*" * study["understanding_rating"] + "-" * (5 - study["understanding_rating"])
             st.write(f"**{study['date']}**: {study['title']} - {rating_stars}")
-    
-    # Manual integration option
-    if st.button("Integrate Mastered Topics into Spaced Repetition"):
-        integrated_count = integrate_mastered_topics()
-        if integrated_count > 0:
-            st.success(f"✅ Integrated {integrated_count} mastered topics into your spaced repetition deck!")
-        else:
-            st.info("No new mastered topics to integrate.")
-        st.rerun()
 
 def handle_grade(card: Dict[str, Any], q: int):
     true_card = next((x for x in S()["cards"] if x["id"] == card["id"]), None)
@@ -4448,351 +4036,137 @@ def page_mm():
 
 # ----- World-Model Learning -----
 def page_world_model():
-    page_header("Mental Models & Frameworks")
-    st.caption("Master fundamental ways of thinking through daily AI-generated content adapted to your level")
+    page_header("World-Model Learning")
+    st.caption("Building mental frameworks and models to understand reality through structured learning tracks")
     
-    # Initialize world model state if needed
-    if "mental_models" not in S():
-        S()["mental_models"] = {
-            "completed_models": [],
-            "current_level": 1,
-            "mastery_scores": {},
-            "daily_practice": {}
-        }
+    # Track selection and progress
+    wm_state = S()["world_model"]
     
-    user_level = S()["mental_models"]["current_level"]
+    # Runtime migration: ensure all tracks have progress entries
+    enhanced_tracks = get_ai_enhanced_tracks()
+    for track_key in enhanced_tracks.keys():
+        if track_key not in wm_state["track_progress"]:
+            wm_state["track_progress"][track_key] = {"lesson": 0, "completed": []}
     
-    # Track daily practice
-    today = today_iso()
-    daily_practice = S()["mental_models"]["daily_practice"]
-    completed_today = daily_practice.get(today, {})
+    current_tracks = wm_state["current_tracks"]
     
-    # Check for AI configuration
-    if not st.session_state.get("ai_api_key"):
-        st.warning("AI content generation requires API configuration. Please visit Settings to configure your AI provider.")
-        st.info("Using fallback content for demonstration.")
+    # Track selector
+    all_tracks = list(get_ai_enhanced_tracks().keys())
+    st.markdown("### Select Learning Tracks (2 active)")
+    st.caption("Choose from 8 comprehensive mental model domains")
     
-    # Get daily mental model focus
-    if not completed_today:
-        with st.spinner("Generating today's mental model content..."):
-            # Generate daily categories using AI
-            mental_model_categories = generate_daily_mental_models(user_level)
-            
-            # Select today's mental model category
-            daily_seed = hash(today) % len(mental_model_categories)
-            daily_category = list(mental_model_categories.keys())[daily_seed]
-            category_info = mental_model_categories[daily_category]
-            
-            # Select specific model within category
-            model_seed = (hash(today) // 7) % len(category_info["models"])
-            daily_model = category_info["models"][model_seed]
-            
-            st.markdown(f"### Today's Mental Model: {daily_model}")
-            st.markdown(f"**Category**: {category_info['name']}")
-            st.markdown(f"**Focus**: {category_info['description']}")
-            st.markdown(f"**Your Level**: {user_level}")
-            
-            # Generate detailed content for the selected model
-            model_content = generate_mental_model_content(daily_category, daily_model, user_level)
-            
-            # Parse and display content
-            if isinstance(model_content, str):
-                sections = model_content.split('\n\n')
-                for section in sections:
-                    if section.strip():
-                        st.markdown(section.strip())
-            
-            st.markdown("---")
-            
-            # Practice section
-            st.markdown("### Apply This Model")
-            
-            col1, col2 = st.columns([3, 1])
-            
-            with col1:
-                understanding = st.slider(
-                    "Rate your understanding of this mental model:",
-                    1, 5, 3,
-                    help="1 = New concept, 5 = Can teach others"
-                )
-                
-                notes = st.text_area(
-                    "Reflection notes (optional):",
-                    placeholder="How might you apply this mental model? What connections do you see?",
-                    height=100
-                )
-            
-            with col2:
-                if st.button("Complete Practice", type="primary"):
-                    # Record completion
-                    daily_practice[today] = {
-                        "category": daily_category,
-                        "model": daily_model,
-                        "understanding": understanding,
-                        "notes": notes,
-                        "level": user_level,
-                        "completed_time": now_ts()
-                    }
-                    
-                    # Update mastery and level
-                    mastery_key = f"{daily_category}_{daily_model}"
-                    current_mastery = S()["mental_models"]["mastery_scores"].get(mastery_key, 0)
-                    new_mastery = (current_mastery + understanding) / 2 if current_mastery > 0 else understanding
-                    S()["mental_models"]["mastery_scores"][mastery_key] = new_mastery
-                    
-                    # Level progression based on consistent high performance
-                    if understanding >= 4 and len(daily_practice) >= 7:
-                        recent_scores = [p["understanding"] for p in list(daily_practice.values())[-7:]]
-                        if sum(recent_scores) / len(recent_scores) >= 4.0:
-                            S()["mental_models"]["current_level"] = min(5, user_level + 1)
-                    
-                    # Generate flashcard for spaced repetition
-                    if understanding >= 3:
-                        create_flashcard_from_mental_model(daily_category, daily_model, model_content)
-                    
-                    save_state()
-                    st.success("Practice session completed! Mental model added to your knowledge base.")
-                    st.rerun()
+    track_options = [get_ai_enhanced_tracks()[t]["name"] for t in all_tracks]
+    track_keys = {get_ai_enhanced_tracks()[t]["name"]: t for t in all_tracks}
     
-    else:
-        # Show completed session
-        st.success("Mental model practice completed for today!")
-        st.markdown(f"### Today's Study: {completed_today['model']}")
-        st.markdown(f"**Category**: {completed_today['category'].replace('_', ' ').title()}")
-        
-        # Show understanding rating
-        rating_display = "★" * completed_today['understanding'] + "☆" * (5 - completed_today['understanding'])
-        st.markdown(f"**Understanding**: {rating_display} ({completed_today['understanding']}/5)")
-        
-        if completed_today.get('notes'):
-            st.markdown(f"**Your Notes**: {completed_today['notes']}")
-        
-        # Show progress info
-        if completed_today['level'] < user_level:
-            st.info(f"You've advanced to Level {user_level} since this session!")
-    
-    # Show mental model categories overview
-    st.markdown("---")
-    st.markdown("### Mental Model Categories")
-    st.caption("AI generates fresh content daily, adapted to your current level")
-    
-    with st.spinner("Loading categories..."):
-        categories = generate_daily_mental_models(user_level)
-        
-        cols = st.columns(2)
-        for i, (cat_key, cat_info) in enumerate(categories.items()):
-            with cols[i % 2]:
-                with st.expander(f"{cat_info['name']} ({len(cat_info['models'])} models)"):
-                    st.write(cat_info['description'])
-                    for model in cat_info['models']:
-                        mastery_key = f"{cat_key}_{model}"
-                        mastery = S()["mental_models"]["mastery_scores"].get(mastery_key, 0)
-                        if mastery > 0:
-                            st.write(f"• {model} (Mastery: {mastery:.1f}/5)")
-                        else:
-                            st.write(f"• {model}")
-
-def create_flashcard_from_mental_model(category: str, model_name: str, content: str):
-    """Create a flashcard for spaced repetition from mental model content"""
-    if "cards" not in S():
-        return
-    
-    # Extract key information for flashcard
-    front = f"Mental Model: {model_name}"
-    back = content[:500] + "..." if len(content) > 500 else content
-    
-    card = Card(
-        cid=uuid.uuid4().hex,
-        front=front,
-        back=back,
-        tags=[category, "mental_model", "daily_practice"]
+    selected_names = st.multiselect(
+        "Choose 2 tracks to focus on:",
+        track_options,
+        default=[get_ai_enhanced_tracks()[t]["name"] for t in current_tracks[:2]],
+        max_selections=2
     )
     
-    S()["cards"].append(card)
-    save_state()
-        st.info(category_info['description'])
-        
-        # Generate content for this mental model
-        model_content = generate_mental_model_content(daily_category, daily_model)
-        
-        # Display learning content
-        col1, col2 = st.columns([3, 2])
-        
-        with col1:
-            st.markdown("#### Core Concept")
-            st.markdown(model_content['definition'])
-            
-            st.markdown("#### Real-World Example")
-            st.success(model_content['example'])
-            
-            st.markdown("#### Application Exercise")
-            st.warning(model_content['exercise'])
-            
-        with col2:
-            st.markdown("#### Key Insights")
-            for insight in model_content['insights']:
-                st.write(f"• {insight}")
-            
-            st.markdown("#### Related Models")
-            for related in model_content['related']:
-                st.caption(f"↗️ {related}")
-        
-        # Practice Questions
-        st.markdown("### 🧠 Active Practice")
-        
-        questions = model_content['questions']
-        user_responses = {}
-        
-        for i, question in enumerate(questions):
-            st.markdown(f"**Question {i+1}:** {question['prompt']}")
-            response = st.text_area(f"Your answer:", key=f"mental_model_q{i}", height=80)
-            user_responses[f"q{i}"] = response
-            
-            if response:
-                with st.expander(f"Model Answer & Analysis"):
-                    st.success(f"**Key points to consider:** {question['key_points']}")
-                    st.info(f"**Mental model application:** {question['model_application']}")
-        
-        # Completion and self-assessment
-        if st.button("Complete Mental Model Practice", type="primary"):
-            understanding = st.slider(
-                "Rate your understanding of this mental model:",
-                1, 5, 3,
-                help="1=Confused, 3=Basic grasp, 5=Can teach others"
-            )
-            
-            # Record completion
-            S()["mental_models"]["daily_practice"][today] = {
-                "category": daily_category,
-                "model": daily_model,
-                "understanding_rating": understanding,
-                "responses": user_responses,
-                "completed_at": datetime.now().isoformat()
-            }
-            
-            # Update mastery tracking
-            mastery_key = f"{daily_category}_{daily_model.lower().replace(' ', '_')}"
-            if mastery_key not in S()["mental_models"]["mastery_scores"]:
-                S()["mental_models"]["mastery_scores"][mastery_key] = []
-            S()["mental_models"]["mastery_scores"][mastery_key].append(understanding)
-            
-            # Mark as completed
-            mark_completed("world_model")
+    if len(selected_names) == 2:
+        new_tracks = [track_keys[name] for name in selected_names]
+        if new_tracks != current_tracks:
+            wm_state["current_tracks"] = new_tracks
             save_state()
-            
-            st.success(f"Mental model practice completed! Understanding: {understanding}/5")
             st.rerun()
     
-    else:
-        # Show completed practice for today
-        practice = completed_today
-        st.success("✅ **Mental Model practice completed for today!**")
-        st.markdown(f"### Today's Model: {practice['model']}")
-        st.markdown(f"**Category**: {practice['category'].replace('_', ' ').title()}")
-        rating_stars = "⭐" * practice['understanding_rating'] + "☆" * (5 - practice['understanding_rating'])
-        st.markdown(f"**Your Understanding**: {rating_stars} ({practice['understanding_rating']}/5)")
-    
-    # Progress Overview
-    st.markdown("---")
-    st.markdown("### 📊 Mental Models Mastery Progress")
-    
-    mastery_scores = S()["mental_models"]["mastery_scores"]
-    
-    # Group by category and show progress
-    for category_key, category_info in MENTAL_MODEL_CATEGORIES.items():
-        st.markdown(f"#### {category_info['name']}")
+    # Display current tracks and lessons
+    enhanced_tracks = get_ai_enhanced_tracks()
+    for i, track_key in enumerate(current_tracks[:2]):
+        track_info = enhanced_tracks[track_key]
+        lesson = get_current_lesson(track_key)
+        progress = wm_state["track_progress"][track_key]
         
-        category_models = category_info['models']
-        mastered_count = 0
+        activity_key = f"world_model_{'a' if i == 0 else 'b'}"
+        completed_today = is_completed_today(activity_key)
         
-        cols = st.columns(min(len(category_models), 4))
-        for i, model in enumerate(category_models):
-            mastery_key = f"{category_key}_{model.lower().replace(' ', '_')}"
-            scores = mastery_scores.get(mastery_key, [])
+        with st.container(border=True):
+            status_icon = "Done" if completed_today else "Pending"
+            st.markdown(f"### {status_icon} Track {'A' if i == 0 else 'B'}: {track_info['name']}")
+            st.markdown(f"**Lesson {progress['lesson'] + 1}: {lesson['title']}**")
             
-            if scores:
-                avg_score = sum(scores) / len(scores)
-                if avg_score >= 4.0:
-                    mastered_count += 1
-                    status = "🟢"
-                elif avg_score >= 3.0:
-                    status = "🟡"
-                else:
-                    status = "🔴"
+            if not completed_today:
+                # Show lesson content
+                st.markdown("#### Key Concepts")
+                st.info(lesson['content'])
                 
-                with cols[i % 4]:
-                    st.metric(
-                        model,
-                        f"{avg_score:.1f}/5",
-                        f"{len(scores)} sessions"
-                    )
-                    st.caption(f"{status} {len(scores)} practices")
+                st.markdown("#### Worked Example")
+                st.success(lesson['example'])
+                
+                # Active recall questions
+                st.markdown("#### Active Recall (answer mentally, then check)")
+                for j, question in enumerate(lesson['questions']):
+                    with st.expander(f"Q{j+1}: {question}"):
+                        # This would contain the answer/explanation
+                        if j == 0:
+                            st.write("Think through this before expanding...")
+                        else:
+                            st.write("Consider the concepts above...")
+                
+                # Transfer question
+                st.markdown("#### Transfer Challenge")
+                st.warning(f"Transfer Challenge: {lesson['transfer']}")
+                
+                # Completion button
+                if st.button(f"Complete Track {'A' if i == 0 else 'B'} Lesson", key=f"complete_{track_key}"):
+                    mark_completed(activity_key)
+                    advance_lesson(track_key)
+                    
+                    # Generate spaced repetition cards from this lesson
+                    for question in lesson['questions']:
+                        new_card = {
+                            "id": new_id(),
+                            "front": question,
+                            "back": f"From {lesson['title']}: {lesson['content'][:200]}...",
+                            "tags": ["world-model", track_key.replace("_", "-")],
+                            "ef": 2.5,
+                            "reps": 0,
+                            "interval": 0,
+                            "due": today_iso(),
+                            "history": [],
+                            "new": True
+                        }
+                        S()["cards"].append(new_card)
+                    
+                    # Log lesson completion
+                    wm_state["lesson_history"].append({
+                        "date": today_iso(),
+                        "track": track_key,
+                        "lesson": lesson['title'],
+                        "lesson_number": progress['lesson']
+                    })
+                    
+                    save_state()
+                    st.success(f"Lesson completed! Added {len(lesson['questions'])} cards to spaced repetition.")
+                    st.rerun()
             else:
-                with cols[i % 4]:
-                    st.metric(model, "Not started", "")
-                    st.caption("⚪ 0 practices")
-        
-        progress_pct = (mastered_count / len(category_models)) * 100
-        st.progress(progress_pct / 100)
-        st.caption(f"{mastered_count}/{len(category_models)} models mastered ({progress_pct:.0f}%)")
+                st.success(f"✅ Today's lesson completed: {lesson['title']}")
+                # Show brief summary for completed lessons
+                st.caption(lesson['content'][:150] + "...")
+    
+    # Progress tracking
+    st.markdown("### Learning Progress")
+    enhanced_tracks = get_ai_enhanced_tracks()
+    total_lessons = sum(len(enhanced_tracks[track]["lessons"]) for track in all_tracks)
+    completed_lessons = sum(len(wm_state["track_progress"].get(track, {"completed": []})["completed"]) for track in all_tracks)
+    
+    progress_pct = (completed_lessons / max(1, total_lessons)) * 100
+    st.progress(progress_pct / 100.0)
+    st.write(f"**{completed_lessons}/{total_lessons}** lessons completed across all tracks ({progress_pct:.1f}%)")
+    
+    # Recent lesson history
+    if wm_state["lesson_history"]:
+        st.markdown("### Recent Lessons")
+        for session in wm_state["lesson_history"][-5:]:
+            track_name = WORLD_MODEL_TRACKS[session["track"]]["name"]
+            st.write(f"• {session['date']}: **{session['lesson']}** ({track_name})")
 
-def generate_mental_model_content(category, model_name):
-    """Generate comprehensive content for a mental model"""
-    # This is a simplified version - in practice, you'd have a rich database
-    content_database = {
-        "bayesian_thinking": {
-            "Base Rate Neglect": {
-                "definition": "**Base Rate Neglect** occurs when people ignore the prior probability (base rate) of an event when making judgments. We overweight specific information and underweight general statistical information.",
-                "example": "A taxi was involved in a hit-and-run accident. 85% of taxis are Blue and 15% are Green. A witness says the taxi was Green and is 80% reliable. Most people think it's 80% likely the taxi was Green, but Bayes' theorem shows it's only 41% likely due to the low base rate of Green taxis.",
-                "exercise": "Your company's spam filter flags an email as spam with 90% accuracy. If 2% of all emails are actually spam, what's the probability that a flagged email is actually spam? (Hint: Consider false positives!)",
-                "insights": [
-                    "Base rates matter more than most people think",
-                    "Dramatic individual cases can distort probability judgments", 
-                    "Always ask: 'What's the prior probability?'",
-                    "Medical testing, security screening heavily affected"
-                ],
-                "related": [
-                    "Bayes' Theorem",
-                    "Representative Heuristic",
-                    "Availability Bias"
-                ],
-                "questions": [
-                    {
-                        "prompt": "You're hiring for a role. 90% of applicants are unqualified, 10% qualified. A qualified candidate has an 80% chance of passing your interview, an unqualified candidate has 20% chance. If someone passes, what's the probability they're qualified?",
-                        "key_points": "P(Qualified|Pass) = P(Pass|Qualified) × P(Qualified) / P(Pass). Don't forget to calculate P(Pass) using the law of total probability!",
-                        "model_application": "Base rate neglect would make you overconfident that the passing candidate is qualified. The actual probability is only 47%."
-                    },
-                    {
-                        "prompt": "How might base rate neglect affect medical diagnosis? Give a specific example.",
-                        "key_points": "Rare diseases have low base rates. Even accurate tests can yield many false positives. Doctors may overdiagnose rare conditions when test comes back positive.",
-                        "model_application": "Base rate awareness leads to better diagnostic accuracy and appropriate use of additional testing."
-                    }
-                ]
-            }
-        }
-        # Add more models here - this is just one example
-    }
-    
-    # Default fallback content
-    return content_database.get(category, {}).get(model_name, {
-        "definition": f"**{model_name}** is a fundamental mental model in {category.replace('_', ' ')}.",
-        "example": "Consider how this model applies to everyday decision-making...",
-        "exercise": "Think of a recent situation where this mental model would have been useful.",
-        "insights": [
-            "This model helps improve thinking",
-            "Practical applications are numerous", 
-            "Connects to other mental models"
-        ],
-        "related": ["System 1 vs System 2", "Other relevant models"],
-        "questions": [
-            {
-                "prompt": f"How would you explain {model_name} to a friend?",
-                "key_points": "Focus on clarity and practical examples",
-                "model_application": "Teaching others solidifies your own understanding"
-            }
-        ]
-    })
-    
+    # Academic Research References
+    st.markdown("---")
+    st.caption("**Research Evidence**: Spaced repetition and active recall significantly improve long-term retention and learning efficiency (Bjork, 1994; Roediger & Karpicke, 2006). Structured knowledge building enhances expert-level understanding and transfer.")
+
 # ----- Enhanced Writing with World-Model Integration -----
 def page_writing():
     page_header("Writing Sprint (12 min)")
@@ -5645,7 +5019,7 @@ def page_healthy_baseline():
     if completion_percentage == 1.0:
         st.markdown("""
         <div style="background: linear-gradient(90deg, gold, #FFD700); padding: 10px; border-radius: 8px; text-align: center; color: black; font-weight: bold; margin-bottom: 20px;">
-        🏆 PERFECT DAY! All healthy baseline activities completed! 🏆
+        PERFECT DAY! All healthy baseline activities completed!
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -5655,85 +5029,85 @@ def page_healthy_baseline():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### 🧘 Mind & Mental Health")
+        st.markdown("### Mind & Mental Health")
         
         # Meditation
         if not baseline_status.get("meditation", False):
-            if st.button("✅ Meditation (10+ min)", key="meditation_btn", use_container_width=True):
+            if st.button("Meditation (10+ min)", key="meditation_btn", use_container_width=True):
                 mark_healthy_baseline_completed("meditation")
-                st.success("Meditation logged! 🧘‍♀️")
+                st.success("Meditation logged!")
                 st.rerun()
         else:
-            st.success("✅ Meditation completed")
+            st.success("Meditation completed")
         
         # Sleep Quality
         if not baseline_status.get("sleep_quality", False):
-            if st.button("✅ Quality Sleep (7-9 hrs)", key="sleep_btn", use_container_width=True):
+            if st.button("Quality Sleep (7-9 hrs)", key="sleep_btn", use_container_width=True):
                 mark_healthy_baseline_completed("sleep_quality")
-                st.success("Sleep quality logged! 😴")
+                st.success("Sleep quality logged!")
                 st.rerun()
         else:
-            st.success("✅ Quality Sleep completed")
+            st.success("Quality Sleep completed")
         
         # Social Engagement
         if not baseline_status.get("social_engagement", False):
-            if st.button("✅ Social Connection", key="social_btn", use_container_width=True):
+            if st.button("Social Connection", key="social_btn", use_container_width=True):
                 mark_healthy_baseline_completed("social_engagement")
-                st.success("Social engagement logged! 👥")
+                st.success("Social engagement logged!")
                 st.rerun()
         else:
-            st.success("✅ Social Connection completed")
+            st.success("Social Connection completed")
         
         # Reading
         if not baseline_status.get("reading", False):
-            if st.button("✅ Reading (20+ min)", key="reading_btn", use_container_width=True):
+            if st.button("Reading (20+ min)", key="reading_btn", use_container_width=True):
                 mark_healthy_baseline_completed("reading")
-                st.success("Reading logged! 📚")
+                st.success("Reading logged!")
                 st.rerun()
         else:
-            st.success("✅ Reading completed")
+            st.success("Reading completed")
     
     with col2:
-        st.markdown("### 💪 Physical Health")
+        st.markdown("### Physical Health")
         
         # Exercise
         if not baseline_status.get("exercise", False):
-            if st.button("✅ Exercise (30+ min)", key="exercise_btn", use_container_width=True):
+            if st.button("Exercise (30+ min)", key="exercise_btn", use_container_width=True):
                 mark_healthy_baseline_completed("exercise")
-                st.success("Exercise logged! 💪")
+                st.success("Exercise logged!")
                 st.rerun()
         else:
-            st.success("✅ Exercise completed")
+            st.success("Exercise completed")
         
         # Nutrition
         if not baseline_status.get("nutrition", False):
-            if st.button("✅ Brain-Healthy Nutrition", key="nutrition_btn", use_container_width=True):
+            if st.button("Brain-Healthy Nutrition", key="nutrition_btn", use_container_width=True):
                 mark_healthy_baseline_completed("nutrition")
-                st.success("Nutrition logged! 🥗")
+                st.success("Nutrition logged!")
                 st.rerun()
         else:
-            st.success("✅ Brain-Healthy Nutrition completed")
+            st.success("Brain-Healthy Nutrition completed")
         
         # Hydration
         if not baseline_status.get("hydration", False):
-            if st.button("✅ Adequate Hydration", key="hydration_btn", use_container_width=True):
+            if st.button("Adequate Hydration", key="hydration_btn", use_container_width=True):
                 mark_healthy_baseline_completed("hydration")
-                st.success("Hydration logged! 💧")
+                st.success("Hydration logged!")
                 st.rerun()
         else:
-            st.success("✅ Adequate Hydration completed")
+            st.success("Adequate Hydration completed")
         
         # Sunlight
         if not baseline_status.get("sunlight", False):
-            if st.button("✅ Sunlight Exposure", key="sunlight_btn", use_container_width=True):
+            if st.button("Sunlight Exposure", key="sunlight_btn", use_container_width=True):
                 mark_healthy_baseline_completed("sunlight")
-                st.success("Sunlight logged! ☀️")
+                st.success("Sunlight logged!")
                 st.rerun()
         else:
-            st.success("✅ Sunlight Exposure completed")
+            st.success("Sunlight Exposure completed")
     
     # Show streaks
-    st.markdown("### 🔥 Current Streaks")
+    st.markdown("### Current Streaks")
     streaks = S().get("healthy_baseline", {}).get("streaks", {})
     
     streak_cols = st.columns(4)
@@ -5816,52 +5190,6 @@ def page_settings():
             st.caption("Purple-grey dark mode for comfortable evening use")
         else:
             st.caption("Clean Apple-inspired light mode for daytime use")
-    
-    st.markdown("---")
-    
-    # AI Configuration
-    st.markdown("### AI Content Generation")
-    st.caption("Configure AI provider for dynamic daily content generation")
-    
-    # AI Provider selection
-    current_provider = st.session_state.get("ai_provider", "openai")
-    ai_provider = st.selectbox(
-        "AI Provider",
-        options=list(AI_PROVIDERS.keys()),
-        format_func=lambda x: AI_PROVIDERS[x],
-        index=list(AI_PROVIDERS.keys()).index(current_provider),
-        help="Choose your preferred AI provider for content generation"
-    )
-    
-    # API Key input
-    api_key_placeholder = "sk-..." if ai_provider == "openai" else ("sk-ant-..." if ai_provider == "anthropic" else "AI...")
-    current_key = st.session_state.get("ai_api_key", "")
-    api_key = st.text_input(
-        f"{AI_PROVIDERS[ai_provider]} API Key",
-        value=current_key,
-        type="password",
-        placeholder=api_key_placeholder,
-        help=f"Enter your {AI_PROVIDERS[ai_provider]} API key for content generation"
-    )
-    
-    # Save AI settings
-    if st.button("Save AI Configuration"):
-        st.session_state["ai_provider"] = ai_provider
-        st.session_state["ai_api_key"] = api_key
-        # Clear cache when changing AI settings
-        if "daily_ai_cache" in st.session_state:
-            del st.session_state["daily_ai_cache"]
-        st.success(f"AI configuration saved! Using {AI_PROVIDERS[ai_provider]}")
-    
-    # Test AI connection
-    if api_key and st.button("Test AI Connection"):
-        with st.spinner("Testing AI connection..."):
-            test_content = generate_ai_content("Generate a brief test message confirming the connection is working.", max_tokens=50)
-            if "Error" not in test_content and "not available" not in test_content:
-                st.success("AI connection successful!")
-                st.info(f"Test response: {test_content}")
-            else:
-                st.error("AI connection failed. Please check your API key.")
     
     st.markdown("---")
     
@@ -6835,6 +6163,11 @@ with st.sidebar:
     st.markdown("# MaxMind")
     st.markdown("*Enhanced Cognitive Training*")
     st.markdown("---")
+    
+    # Setup AI configuration
+    setup_ai_configuration()
+    st.markdown("---")
+    
     st.session_state.setdefault("page", "Dashboard")
     
     # Custom navigation with sections and completion indicators
@@ -7029,5 +6362,24 @@ if (!document.querySelector('meta[name="apple-mobile-web-app-capable"]')) {
     themeColor.content = '#000000';
     head.appendChild(themeColor);
 }
+
+// Auto-load saved API key on page load
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        const savedKey = localStorage.getItem('maxmind_openai_key');
+        if (savedKey) {
+            // Find API key input field and populate it
+            const apiInput = document.querySelector('input[placeholder="sk-..."]');
+            if (apiInput && !apiInput.value) {
+                apiInput.value = savedKey;
+                apiInput.dispatchEvent(new Event('input', { bubbles: true }));
+                
+                // Also trigger Streamlit's change detection
+                const event = new Event('change', { bubbles: true });
+                apiInput.dispatchEvent(event);
+            }
+        }
+    }, 1000); // Small delay to ensure Streamlit components are loaded
+});
 </script>
 """, unsafe_allow_html=True)
