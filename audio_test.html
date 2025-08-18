@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual N-Back Audio Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            margin: 10px;
+            border-radius: 5px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0088ff;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 8px;
+            width: 300px;
+            height: 300px;
+            margin: 20px auto;
+            background-color: #2e2e2e;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .cell {
+            background-color: #333;
+            border: 2px solid #666;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .cell.highlighted {
+            background-color: #00ff88;
+            border-color: #00cc66;
+            color: #000;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <h1>Dual N-Back Audio Test</h1>
+    <p>This is a standalone test to verify audio functionality.</p>
+    
+    <div>
+        <button onclick="enableAudio()">Enable Audio</button>
+        <button onclick="testVoices()">List Available Voices</button>
+    </div>
+    
+    <h3>Test Letters:</h3>
+    <div>
+        <button onclick="speakLetter('A')">A</button>
+        <button onclick="speakLetter('B')">B</button>
+        <button onclick="speakLetter('C')">C</button>
+        <button onclick="speakLetter('D')">D</button>
+        <button onclick="speakLetter('E')">E</button>
+    </div>
+    
+    <h3>Visual Grid Test:</h3>
+    <div class="grid" id="grid">
+        <div class="cell" id="cell-0"></div>
+        <div class="cell" id="cell-1"></div>
+        <div class="cell" id="cell-2"></div>
+        <div class="cell" id="cell-3"></div>
+        <div class="cell" id="cell-4"></div>
+        <div class="cell" id="cell-5"></div>
+        <div class="cell" id="cell-6"></div>
+        <div class="cell" id="cell-7"></div>
+        <div class="cell" id="cell-8"></div>
+    </div>
+    
+    <div>
+        <button onclick="highlightRandomCell()">Highlight Random Cell</button>
+        <button onclick="clearGrid()">Clear Grid</button>
+    </div>
+    
+    <div id="status" style="margin-top: 20px;"></div>
+    
+    <script>
+        let currentHighlight = -1;
+        
+        function log(message) {
+            document.getElementById('status').innerHTML = message;
+            console.log(message);
+        }
+        
+        function enableAudio() {
+            if (window.speechSynthesis) {
+                // Force load voices
+                speechSynthesis.getVoices();
+                
+                // Test utterance
+                const testUtterance = new SpeechSynthesisUtterance('Audio enabled');
+                testUtterance.volume = 0.5;
+                testUtterance.rate = 0.8;
+                
+                testUtterance.onstart = () => log('Audio test started successfully');
+                testUtterance.onend = () => log('Audio test completed');
+                testUtterance.onerror = (e) => log('Audio error: ' + e.error);
+                
+                speechSynthesis.speak(testUtterance);
+            } else {
+                log('Speech synthesis not supported in this browser');
+            }
+        }
+        
+        function testVoices() {
+            const voices = speechSynthesis.getVoices();
+            if (voices.length === 0) {
+                log('No voices available yet. Try clicking Enable Audio first.');
+                return;
+            }
+            
+            let voiceList = 'Available voices:\\n';
+            voices.forEach((voice, index) => {
+                voiceList += `${index}: ${voice.name} (${voice.lang})\\n`;
+            });
+            
+            log(voiceList);
+            alert(voiceList);
+        }
+        
+        function speakLetter(letter) {
+            if (!window.speechSynthesis) {
+                log('Speech synthesis not supported');
+                return;
+            }
+            
+            speechSynthesis.cancel();
+            
+            setTimeout(() => {
+                const utterance = new SpeechSynthesisUtterance(letter);
+                utterance.rate = 0.5;
+                utterance.volume = 1.0;
+                utterance.lang = 'en-US';
+                
+                const voices = speechSynthesis.getVoices();
+                if (voices.length > 0) {
+                    // Try to find a good English voice
+                    const englishVoice = voices.find(v => 
+                        v.lang === 'en-US' || 
+                        v.lang.startsWith('en') ||
+                        v.name.toLowerCase().includes('english')
+                    );
+                    
+                    if (englishVoice) {
+                        utterance.voice = englishVoice;
+                        log(`Speaking ${letter} with voice: ${englishVoice.name}`);
+                    } else {
+                        log(`Speaking ${letter} with default voice`);
+                    }
+                }
+                
+                utterance.onstart = () => log(`Started speaking: ${letter}`);
+                utterance.onend = () => log(`Finished speaking: ${letter}`);
+                utterance.onerror = (e) => log(`Error speaking ${letter}: ${e.error}`);
+                
+                speechSynthesis.speak(utterance);
+            }, 100);
+        }
+        
+        function highlightRandomCell() {
+            clearGrid();
+            currentHighlight = Math.floor(Math.random() * 9);
+            const cell = document.getElementById(`cell-${currentHighlight}`);
+            cell.classList.add('highlighted');
+            cell.textContent = '●';
+            log(`Highlighted cell ${currentHighlight + 1}`);
+        }
+        
+        function clearGrid() {
+            for (let i = 0; i < 9; i++) {
+                const cell = document.getElementById(`cell-${i}`);
+                cell.classList.remove('highlighted');
+                cell.textContent = '';
+            }
+            currentHighlight = -1;
+            log('Grid cleared');
+        }
+        
+        // Initialize voices when page loads
+        speechSynthesis.addEventListener('voiceschanged', () => {
+            log('Voices loaded');
+        });
+        
+        // Load voices immediately if available
+        if (speechSynthesis.getVoices().length > 0) {
+            log('Voices already available');
+        }
+    </script>
+</body>
+</html>

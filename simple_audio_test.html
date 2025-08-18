@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Audio Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        .button {
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            margin: 20px;
+            border-radius: 10px;
+            font-size: 24px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .button:hover {
+            background: #ff6666;
+        }
+        .test-button {
+            background: #0088ff;
+            font-size: 18px;
+            padding: 15px 30px;
+        }
+        .test-button:hover {
+            background: #44aaff;
+        }
+        #status {
+            margin: 20px 0;
+            padding: 20px;
+            background: #333;
+            border-radius: 10px;
+            min-height: 100px;
+        }
+    </style>
+</head>
+<body>
+    <h1>AUDIO DEBUG TEST</h1>
+    <p>This will help us figure out why audio isn't working</p>
+    
+    <button class="button" onclick="enableAudio()">
+        🔊 CLICK HERE FIRST TO ENABLE AUDIO
+    </button>
+    
+    <div id="status">Click the red button above first!</div>
+    
+    <h3>Test Letters (click after enabling audio):</h3>
+    <button class="test-button" onclick="testLetter('A')">A</button>
+    <button class="test-button" onclick="testLetter('B')">B</button>
+    <button class="test-button" onclick="testLetter('C')">C</button>
+    <button class="test-button" onclick="testLetter('D')">D</button>
+    <button class="test-button" onclick="testLetter('E')">E</button>
+    
+    <script>
+        let audioEnabled = false;
+        
+        function log(message) {
+            const status = document.getElementById('status');
+            status.innerHTML += message + '<br>';
+            console.log(message);
+        }
+        
+        function enableAudio() {
+            log('🔧 Attempting to enable audio...');
+            
+            if (!window.speechSynthesis) {
+                log('❌ ERROR: Speech synthesis not supported in this browser!');
+                log('📋 Try using Chrome, Edge, or Firefox');
+                return;
+            }
+            
+            log('✅ Speech synthesis is available');
+            
+            // Force load voices
+            const voices = speechSynthesis.getVoices();
+            log(`🎵 Found ${voices.length} voices initially`);
+            
+            function doAudioTest() {
+                const testVoices = speechSynthesis.getVoices();
+                log(`🎵 Available voices: ${testVoices.length}`);
+                
+                if (testVoices.length > 0) {
+                    log('📋 Voice list:');
+                    testVoices.forEach((voice, i) => {
+                        log(`  ${i}: ${voice.name} (${voice.lang})`);
+                    });
+                }
+                
+                // Test utterance
+                const utterance = new SpeechSynthesisUtterance('Audio test successful');
+                utterance.volume = 1.0;
+                utterance.rate = 0.8;
+                
+                if (testVoices.length > 0) {
+                    const englishVoice = testVoices.find(v => v.lang.startsWith('en'));
+                    if (englishVoice) {
+                        utterance.voice = englishVoice;
+                        log(`🎯 Using voice: ${englishVoice.name}`);
+                    }
+                }
+                
+                utterance.onstart = () => {
+                    log('✅ SUCCESS: Audio is working!');
+                    audioEnabled = true;
+                };
+                
+                utterance.onend = () => {
+                    log('✅ Audio test completed');
+                };
+                
+                utterance.onerror = (e) => {
+                    log(`❌ AUDIO ERROR: ${e.error}`);
+                    log('📋 This might be why the Dual N-Back audio doesn\'t work');
+                };
+                
+                log('🔊 Playing test audio...');
+                speechSynthesis.speak(utterance);
+            }
+            
+            if (voices.length === 0) {
+                log('⏳ Waiting for voices to load...');
+                speechSynthesis.addEventListener('voiceschanged', doAudioTest, { once: true });
+                
+                // Fallback timeout
+                setTimeout(() => {
+                    if (speechSynthesis.getVoices().length === 0) {
+                        log('⚠️ Voices still not loaded, trying anyway...');
+                        doAudioTest();
+                    }
+                }, 2000);
+            } else {
+                doAudioTest();
+            }
+        }
+        
+        function testLetter(letter) {
+            if (!audioEnabled) {
+                log('❌ Please enable audio first!');
+                return;
+            }
+            
+            log(`🔊 Testing letter: ${letter}`);
+            
+            speechSynthesis.cancel();
+            
+            setTimeout(() => {
+                const utterance = new SpeechSynthesisUtterance(letter);
+                utterance.rate = 0.6;
+                utterance.volume = 1.0;
+                utterance.lang = 'en-US';
+                
+                const voices = speechSynthesis.getVoices();
+                if (voices.length > 0) {
+                    const englishVoice = voices.find(v => v.lang.startsWith('en'));
+                    if (englishVoice) {
+                        utterance.voice = englishVoice;
+                    }
+                }
+                
+                utterance.onstart = () => log(`✅ Playing: ${letter}`);
+                utterance.onend = () => log(`✅ Finished: ${letter}`);
+                utterance.onerror = (e) => log(`❌ Error with ${letter}: ${e.error}`);
+                
+                speechSynthesis.speak(utterance);
+            }, 100);
+        }
+        
+        // Auto-check browser compatibility
+        window.onload = function() {
+            log('🌐 Browser: ' + navigator.userAgent);
+            log('🔧 Speech synthesis support: ' + (window.speechSynthesis ? 'YES' : 'NO'));
+            
+            if (window.speechSynthesis) {
+                const voices = speechSynthesis.getVoices();
+                log(`🎵 Initial voices: ${voices.length}`);
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1116,6 +1116,86 @@ def search_cards(query: str) -> List[Dict[str, Any]]:
     
     return results
 
+# ========== Progress Tracking & Milestones ==========
+def get_weekly_progress():
+    """Get current week progress and milestone data"""
+    state = S()
+    
+    # Initialize progress tracking if not exists
+    if "progress_tracking" not in state:
+        state["progress_tracking"] = {
+            "start_date": today_iso(),
+            "weekly_milestones": {},
+            "achievements": []
+        }
+        save_state()
+    
+    # Calculate current week
+    from datetime import datetime
+    start_date = datetime.fromisoformat(state["progress_tracking"]["start_date"])
+    current_date = datetime.now()
+    days_elapsed = (current_date - start_date).days
+    current_week = (days_elapsed // 7) + 1
+    
+    # Get this week's milestones
+    week_key = f"week_{current_week}"
+    weekly_data = state["progress_tracking"]["weekly_milestones"].get(week_key, {})
+    
+    # Count milestones hit this week
+    cognitive_domains = ["nback", "stroop", "complex_span", "gng", "processing_speed", "review", "topic_study"]
+    milestones_hit = 0
+    
+    for domain in cognitive_domains:
+        if weekly_data.get(f"{domain}_milestone", False):
+            milestones_hit += 1
+    
+    return {
+        "current_week": current_week,
+        "milestones_this_week": milestones_hit,
+        "total_milestones": 7,
+        "weekly_data": weekly_data
+    }
+
+def check_and_award_milestone(drill: str, level_achieved: int, consistency_days: int):
+    """Check if user hit a milestone and award if so"""
+    state = S()
+    progress = state["progress_tracking"]
+    current_week = get_weekly_progress()["current_week"]
+    week_key = f"week_{current_week}"
+    
+    if week_key not in progress["weekly_milestones"]:
+        progress["weekly_milestones"][week_key] = {}
+    
+    milestone_key = f"{drill}_milestone"
+    
+    # Milestone criteria: 3+ sessions this week AND level progression
+    if consistency_days >= 3 and not progress["weekly_milestones"][week_key].get(milestone_key, False):
+        # Check if they've improved from last week
+        last_week_key = f"week_{current_week - 1}" if current_week > 1 else None
+        last_week_level = 0
+        
+        if last_week_key and last_week_key in progress["weekly_milestones"]:
+            last_week_level = progress["weekly_milestones"][last_week_key].get(f"{drill}_best_level", 0)
+        
+        if level_achieved > last_week_level:
+            # Award milestone!
+            progress["weekly_milestones"][week_key][milestone_key] = True
+            progress["weekly_milestones"][week_key][f"{drill}_best_level"] = level_achieved
+            
+            # Add achievement
+            achievement = {
+                "date": today_iso(),
+                "type": "milestone",
+                "drill": drill,
+                "week": current_week,
+                "level": level_achieved
+            }
+            progress["achievements"].append(achievement)
+            save_state()
+            return True
+    
+    return False
+
 # ========== Adaptive engine (per-drill Elo) ==========
 # Param grids — ordered from easiest (index 0) to hardest (last)
 NBACK_GRID: List[Tuple[int,int]] = [ (1,1800), (2,1800), (2,1500), (2,1200), (3,1500), (3,1200), (3,900) ]
@@ -2283,6 +2363,42 @@ def page_dashboard():
     </div>
     """, unsafe_allow_html=True)
     
+    # Weekly Progress Section (compact, as requested)
+    progress_data = get_weekly_progress()
+    current_week = progress_data["current_week"]
+    milestones_hit = progress_data["milestones_this_week"]
+    completion_pct = int((milestones_hit/7)*100)
+    
+    st.markdown(f"""
+    <div style="
+        background: {styles['background']};
+        border: {styles['border']};
+        padding: 0.75rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    ">
+        <div style="
+            color: {styles['text_color']};
+            font-size: 0.9rem;
+        ">
+            <span style="font-weight: 600;">Week {current_week}:</span> {milestones_hit}/7 milestones • {completion_pct}% complete
+        </div>
+        <div style="
+            background: {'#22c55e' if completion_pct > 50 else '#64748b'};
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        ">
+            {'On Track' if completion_pct > 50 else 'Keep Going'}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     # Four main sections with clean dropdown functionality
     col1, col2, col3, col4 = st.columns(4)
     
@@ -2366,29 +2482,24 @@ def page_dashboard():
         
         # Dropdown content
         if st.session_state.get("show_spaced_details", False):
-            st.markdown("**Spaced Learning Activities**")
             
             # Review (with cards due count)
             dc = len(due_cards(S()))
-            status_icon = "✅" if completed.get("review", False) else "•"
-            if st.button(f"{status_icon} Spaced Review ({dc} cards)", key="spaced_review", use_container_width=True):
+            if st.button(f"Spaced Review ({dc} cards)", key="spaced_review", use_container_width=True):
                 st.session_state["page"] = "Spaced Review"
                 st.rerun()
             
             # Topic Study
-            status_icon = "✅" if completed.get("topic_study", False) else "•"
-            if st.button(f"{status_icon} Topic Study", key="spaced_topic", use_container_width=True):
+            if st.button("Topic Study", key="spaced_topic", use_container_width=True):
                 st.session_state["page"] = "Topic Study"
                 st.rerun()
             
             # World Model A & B
-            status_icon = "✅" if completed.get("world_model_a", False) else "•"
-            if st.button(f"{status_icon} World Model A", key="spaced_wm_a", use_container_width=True):
+            if st.button("World Model A", key="spaced_wm_a", use_container_width=True):
                 st.session_state["page"] = "World Model"
                 st.rerun()
             
-            status_icon = "✅" if completed.get("world_model_b", False) else "•"
-            if st.button(f"{status_icon} World Model B", key="spaced_wm_b", use_container_width=True):
+            if st.button("World Model B", key="spaced_wm_b", use_container_width=True):
                 st.session_state["page"] = "World Model"
                 st.rerun()
 
@@ -2431,7 +2542,6 @@ def page_dashboard():
             st.rerun()
         
         if st.session_state.get("show_drills_details", False):
-            st.markdown("**Cognitive Drill Tasks**")
             
             drill_activities = [
                 ("Visual N-Back", "N-Back", "nback"),
@@ -2442,8 +2552,7 @@ def page_dashboard():
             ]
             
             for name, page, key in drill_activities:
-                status_icon = "✅" if completed.get(key, False) else ""
-                if st.button(f"{status_icon} {name}", key=f"drill_{key}", use_container_width=True):
+                if st.button(f"{name}", key=f"drill_{key}", use_container_width=True):
                     st.session_state["page"] = page
                     st.rerun()
 
@@ -2487,7 +2596,6 @@ def page_dashboard():
             st.rerun()
         
         if st.session_state.get("show_additional_details", False):
-            st.markdown("**Learning Plus Activities**")
             
             additional_activities = [
                 ("Writing Exercise", "Writing", "writing"),
@@ -2498,20 +2606,29 @@ def page_dashboard():
             ]
             
             for name, page, key in additional_activities:
-                status_icon = "✅" if completed.get(key, False) else "•"
-                if st.button(f"{status_icon} {name}", key=f"additional_{key}", use_container_width=True):
+                if st.button(f"{name}", key=f"additional_{key}", use_container_width=True):
                     st.session_state["page"] = page
                     st.rerun()
 
-    # Clean reset button
+    # Progress Management Section (as requested in red box area)
     st.markdown("---")
     col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        if st.button("📈 Progress", key="view_progress", use_container_width=True):
+            st.session_state["page"] = "Progress Dashboard"
+            st.rerun()
     with col2:
         if st.button("Reset Daily Progress", key="reset_progress", use_container_width=True):
             for key in S()["daily"]["completed"]:
                 S()["daily"]["completed"][key] = False
             save_state()
             st.success("Daily progress reset!")
+            st.rerun()
+    with col3:
+        # Show weekly milestone status
+        milestones_this_week = get_weekly_progress()["milestones_this_week"]
+        if st.button(f"🏆 {milestones_this_week}/7", key="milestone_status", use_container_width=True, help="Weekly milestones earned"):
+            st.session_state["page"] = "Progress Dashboard"
             st.rerun()
 
     # Adaptive Suggestions
@@ -2589,6 +2706,115 @@ def page_dashboard():
     
     # 60-Day Calendar
     render_calendar_grid()
+
+def page_progress_dashboard():
+    """Comprehensive progress tracking and milestone visualization"""
+    page_header("📈 Progress Dashboard")
+    
+    progress_data = get_weekly_progress()
+    current_week = progress_data["current_week"]
+    
+    # Weekly Progress Overview
+    st.markdown("### Weekly Progress Overview")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Current Week", current_week)
+    with col2:
+        st.metric("Milestones This Week", f"{progress_data['milestones_this_week']}/7")
+    with col3:
+        completion_rate = (progress_data['milestones_this_week'] / 7) * 100
+        st.metric("Completion Rate", f"{completion_rate:.0f}%")
+    
+    # Weekly Progress Chart
+    st.markdown("### Weekly Milestone Progress")
+    
+    # Get milestone data for chart
+    state = S()
+    weekly_milestones = state["progress_tracking"]["weekly_milestones"]
+    
+    weeks = []
+    milestone_counts = []
+    
+    for week_num in range(1, current_week + 1):
+        week_key = f"week_{week_num}"
+        week_data = weekly_milestones.get(week_key, {})
+        
+        # Count milestones for this week
+        count = 0
+        domains = ["nback", "stroop", "complex_span", "gng", "processing_speed", "review", "topic_study"]
+        for domain in domains:
+            if week_data.get(f"{domain}_milestone", False):
+                count += 1
+        
+        weeks.append(f"Week {week_num}")
+        milestone_counts.append(count)
+    
+    # Simple bar chart using Streamlit
+    if weeks:
+        chart_data = {"Week": weeks, "Milestones": milestone_counts}
+        st.bar_chart(chart_data, x="Week", y="Milestones")
+    
+    # Current Week Breakdown
+    st.markdown("### This Week's Milestone Status")
+    
+    current_week_data = weekly_milestones.get(f"week_{current_week}", {})
+    
+    domains = [
+        ("N-Back Training", "nback", "🧠"),
+        ("Stroop/Task Switch", "stroop", "🔄"), 
+        ("Complex Span", "complex_span", "📊"),
+        ("Go/No-Go", "gng", "⚡"),
+        ("Processing Speed", "processing_speed", "⚡"),
+        ("Spaced Review", "review", "📚"),
+        ("Topic Study", "topic_study", "🎓")
+    ]
+    
+    for name, key, emoji in domains:
+        milestone_achieved = current_week_data.get(f"{key}_milestone", False)
+        best_level = current_week_data.get(f"{key}_best_level", 0)
+        
+        col1, col2, col3 = st.columns([3, 1, 1])
+        with col1:
+            st.write(f"{emoji} **{name}**")
+        with col2:
+            if milestone_achieved:
+                st.success("✅ Milestone")
+            else:
+                st.info("⏳ In Progress")
+        with col3:
+            if best_level > 0:
+                st.write(f"Level {best_level}")
+    
+    # Recent Achievements
+    st.markdown("### Recent Achievements")
+    
+    achievements = state["progress_tracking"]["achievements"]
+    recent_achievements = sorted(achievements, key=lambda x: x["date"], reverse=True)[:5]
+    
+    if recent_achievements:
+        for achievement in recent_achievements:
+            st.success(f"🏆 Week {achievement['week']}: {achievement['drill'].title()} Level {achievement['level']} milestone!")
+    else:
+        st.info("Complete 3+ sessions in a cognitive domain this week to earn your first milestone!")
+    
+    # Progress Tips
+    st.markdown("### Progress Tips")
+    st.info("""
+    **How to earn milestones:**
+    - Complete 3+ sessions in a cognitive domain this week
+    - Show improvement from your previous week's best level
+    - Milestones track your consistent progress and skill development
+    
+    **Why this matters:**
+    - Progressive overload is essential for cognitive improvement
+    - Consistent practice builds neural pathways
+    - Week-over-week progress indicates real cognitive gains
+    """)
+    
+    if st.button("← Back to Dashboard", use_container_width=True):
+        st.session_state["page"] = "Dashboard"
+        st.rerun()
 
 def page_review():
     page_header("Spaced Repetition")
@@ -3363,6 +3589,15 @@ def page_nback():
         - Focus on the pattern of positions over time
         """)
 
+    # Adaptive Suggestions
+    adaptive_idx = adaptive_suggest_index("nback")
+    suggested_n, suggested_interval_ms = NBACK_GRID[adaptive_idx]
+    suggested_speed = "Expert (1.5s)" if suggested_interval_ms <= 900 else "Fast (2s)" if suggested_interval_ms <= 1200 else "Medium (2.5s)" if suggested_interval_ms <= 1500 else "Slow (3s)"
+    
+    feedback = get_performance_feedback("nback")
+    if feedback:
+        st.info(f"🎯 **Adaptive Suggestion**: N={suggested_n}, Speed={suggested_speed} | {feedback}")
+
     # Settings
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -3730,6 +3965,19 @@ def _save_dual_nback_results(dnb, results):
     
     S()["nback_history"].append(session_data)
     mark_completed("nback")
+    
+    # Adaptive system update
+    level_achieved = NBACK_GRID.index((dnb["n"], dnb["interval"])) if (dnb["n"], dnb["interval"]) in NBACK_GRID else 0
+    adaptive_update("nback", level_achieved, results["overall_accuracy"])
+    
+    # Check and award milestone for progressive improvement
+    sessions_this_week = len([s for s in S()["nback_history"] if (time.time() - s["timestamp"]) < 604800])  # 7 days
+    
+    milestone_awarded = check_and_award_milestone("nback", level_achieved, sessions_this_week)
+    if milestone_awarded:
+        st.balloons()
+        st.success("🏆 Milestone achieved! You've shown consistent improvement in N-Back training this week!")
+    
     save_state()
 
 # ----- Processing Speed Training -----
@@ -6027,6 +6275,7 @@ def integrate_mastered_topics():
 # ========== Navigation & Pages ==========
 PAGES = [
     "Dashboard",
+    "Progress Dashboard",
     "HEALTHY BASELINE",
     "Healthy Baseline",
     "SPACED LEARNING",
@@ -6886,7 +7135,7 @@ with st.sidebar:
     # Add logo at the top
     st.image("MaxMindLogo.png", width=120)
     st.markdown("# MaxMind")
-    st.markdown("*Enhanced Cognitive Training*")
+    st.markdown("*30 Minutes a Day Brain Gym Based on Scientific Research for Cognitive Development*")
     st.markdown("---")
     
     # Setup AI configuration
@@ -7033,6 +7282,7 @@ with st.sidebar:
 
 page = st.session_state["page"]
 if page == "Dashboard": page_dashboard()
+elif page == "Progress Dashboard": page_progress_dashboard()
 elif page == "Healthy Baseline": page_healthy_baseline()
 elif page == "Spaced Review": page_review()
 elif page == "Topic Study": page_topic_study()
