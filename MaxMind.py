@@ -2614,8 +2614,8 @@ def page_dashboard():
     st.markdown("---")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
-        if st.button("📈 Progress", key="view_progress", use_container_width=True):
-            st.session_state["page"] = "Progress Dashboard"
+        if st.button("Progress", key="view_progress", use_container_width=True):
+            st.session_state["page"] = "Adaptive Progression"
             st.rerun()
     with col2:
         if st.button("Reset Daily Progress", key="reset_progress", use_container_width=True):
@@ -2627,8 +2627,8 @@ def page_dashboard():
     with col3:
         # Show weekly milestone status
         milestones_this_week = get_weekly_progress()["milestones_this_week"]
-        if st.button(f"🏆 {milestones_this_week}/7", key="milestone_status", use_container_width=True, help="Weekly milestones earned"):
-            st.session_state["page"] = "Progress Dashboard"
+        if st.button(f"{milestones_this_week}/7", key="milestone_status", use_container_width=True, help="Weekly milestones earned"):
+            st.session_state["page"] = "Adaptive Progression"
             st.rerun()
 
     # Adaptive Suggestions
@@ -2709,7 +2709,7 @@ def page_dashboard():
 
 def page_progress_dashboard():
     """Comprehensive progress tracking and milestone visualization"""
-    page_header("📈 Progress Dashboard")
+    page_header("📈 Adaptive Progression")
     
     progress_data = get_weekly_progress()
     current_week = progress_data["current_week"]
@@ -3167,7 +3167,7 @@ def page_topic_study():
         today_key = f"domain_preference_{today_iso()}"
         current_selection = st.session_state.get(today_key, "Random")
         
-        domain_options = ["Random"] + [f"{desc}" for desc in domain_descriptions.values()]
+        domain_options = ["Random"] + [key.replace("_", " ").title() for key in domain_descriptions.keys()]
         domain_keys = ["Random"] + list(domain_descriptions.keys())
         
         # Find current index
