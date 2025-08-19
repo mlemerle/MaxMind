@@ -4502,6 +4502,12 @@ def page_task_switching():
         _task_switch_next()
 
     ts = st.session_state["task_switch"]
+    
+    # Check if we're in results phase (after completing all trials)
+    if ts and ts.get("phase") == "results":
+        _task_switch_finish()
+        return
+    
     if ts and ts["current"]:
         # Display current strategy
         st.info(f"**Current Strategy**: {ts['strategy']}")
@@ -4552,6 +4558,7 @@ def _task_switch_next():
     ts = st.session_state["task_switch"]
     if not ts or ts["i"] >= len(ts["stimuli"]):
         if ts:
+            ts["phase"] = "results"  # Set results phase for persistent completion button
             _task_switch_finish()
         return
     
@@ -4659,7 +4666,7 @@ def _task_switch_finish():
         elif strategy_rating <= 2:
             st.info(f"'{ts['strategy']}' wasn't very helpful. Try a different strategy next time.")
         
-        st.session_state["task_switch"] = None
+        st.session_state["task_switch"] = None  # Reset session
         st.rerun()
 
     # Academic Research References
