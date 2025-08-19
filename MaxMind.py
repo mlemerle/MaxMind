@@ -7112,8 +7112,42 @@ with st.sidebar:
     st.markdown("*30 Minutes a Day Brain Gym Based on Scientific Research for Cognitive Development*")
     st.markdown("---")
     
-    # Setup AI configuration
+    # Setup AI configuration (env/session)
     setup_ai_configuration()
+
+    # Visible AI Configuration UI
+    with st.expander("AI Configuration", expanded=False):
+        current_key = S().get("settings", {}).get("apiKey", "")
+        new_key = st.text_input("OpenAI API Key", type="password", placeholder="sk-...", value=current_key)
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Save Key", key="save_api_key"):
+                S().setdefault("settings", {})["apiKey"] = new_key.strip()
+                save_state()
+                # Persist to browser localStorage for convenience
+                try:
+                    components.html(f"""
+                    <script>
+                    localStorage.setItem('maxmind_openai_key', '{new_key.strip()}');
+                    </script>
+                    """, height=0)
+                except Exception:
+                    pass
+                st.success("API key saved.")
+        with c2:
+            if st.button("Clear Key", key="clear_api_key"):
+                S().setdefault("settings", {})["apiKey"] = ""
+                save_state()
+                try:
+                    components.html("""
+                    <script>
+                    localStorage.removeItem('maxmind_openai_key');
+                    </script>
+                    """, height=0)
+                except Exception:
+                    pass
+                st.success("API key cleared.")
+
     st.markdown("---")
     
     st.session_state.setdefault("page", "Dashboard")
