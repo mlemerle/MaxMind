@@ -21,29 +21,105 @@ try:
 except Exception:
     Digraph = None  # type: ignore
 
+try:
+    import openai  # type: ignore
+except Exception:
+    openai = None  # type: ignore
+
 
 # ---- Minimal AI helpers (safe fallbacks) ----
 def get_ai_api_key() -> Optional[str]:
     try:
         key = st.secrets.get("OPENAI_API_KEY")  # type: ignore[attr-defined]
+        if not key:
+            key = st.secrets.get("openai_api_key")  # type: ignore[attr-defined]
     except Exception:
         key = None
     if not key:
         key = os.environ.get("OPENAI_API_KEY")
+    if not key:
+        key = os.environ.get("openai_api_key")
     try:
-        if not key and "settings" in S():
-            key = S()["settings"].get("apiKey")
+        # Check session state safely
+        if not key and KEY in st.session_state:
+            settings = st.session_state[KEY].get("settings", {})
+            key = settings.get("apiKey") or settings.get("openai_api_key") or settings.get("openaiKey")
+        # Also check raw session_state to be resilient to legacy saves
+        if not key:
+            sset = st.session_state.get("settings", {})
+            key = sset.get("apiKey") or sset.get("openai_api_key") or sset.get("openaiKey")
     except Exception:
         pass
     return key
 
 
 def generate_ai_content(prompt: str) -> str:
-    # Lightweight fallback to keep app functional without external API
-    return (
-        "AI generation is disabled. Fallback content based on your prompt:\n\n"
-        + prompt.strip()[:500]
-    )
+    """Generate content using OpenAI when an API key is available; otherwise fallback.
+
+    Returns plain text/markdown (or JSON as a string if the prompt requests it).
+    """
+    api_key = get_ai_api_key()
+    if not api_key:
+        return (
+            "AI generation is disabled. Fallback content based on your prompt:\n\n"
+            + prompt.strip()[:500]
+        )
+
+    try:
+        # Lazy import to avoid hard dependency at startup
+        import openai  # type: ignore
+
+        # Allow model override via settings; default to a lightweight, capable model
+        model = None
+        try:
+            if "settings" in st.session_state:
+                model = st.session_state["settings"].get("model")
+        except Exception:
+            model = None
+        if not model:
+            # Prefer a modern, cost-effective model; fall back to 3.5 if needed
+            model = "gpt-4o-mini"
+
+        client = openai.OpenAI(api_key=api_key)
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert tutor. Be accurate, clear, and concise. "
+                        "Use clean Markdown when helpful."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.5,
+            max_tokens=1400,
+        )
+
+        content = resp.choices[0].message.content if resp and resp.choices else None
+        if not content:
+            return "(AI returned no content)"
+        return content
+    except Exception as e:
+        # Check for specific API key errors
+        error_str = str(e)
+        if "401" in error_str or "invalid_api_key" in error_str or "Incorrect API key" in error_str:
+            return (
+                "❌ **API Key Error**: Your OpenAI API key appears to be invalid or corrupted.\n\n"
+                "Please:\n"
+                "1. Go to https://platform.openai.com/account/api-keys\n"
+                "2. Copy your API key (starts with 'sk-')\n"
+                "3. Paste it in the AI Configuration panel in the sidebar\n"
+                "4. Click 'Save Key'\n\n"
+                f"Error details: {error_str[:200]}..."
+            )
+        else:
+            # Other API errors
+            return (
+                f"AI generation failed: {error_str[:200]}...\n\n"
+                "Fallback content based on your prompt:\n\n" + prompt.strip()[:500]
+            )
 
 
 def setup_ai_configuration():
@@ -2345,8 +2421,104 @@ def page_dashboard():
     </div>
     """, unsafe_allow_html=True)
     
-    # Four main sections with clean dropdown functionality
+    # Four main sections with clean dropdown functionality and improved grid alignment
+    st.markdown("""
+    <style>
+    /* Improved grid alignment for dashboard cards */
+    .stColumn > div {
+        height: 100%;
+    }
+    
+    /* Force columns to maintain consistent alignment */
+    .stColumn {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+    
+    /* Ensure column content doesn't break alignment */
+    .stColumn > div > div {
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Consistent button heights in dropdowns */
+    .stButton > button {
+        min-height: 38px;
+        margin-bottom: 0.25rem;
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+        line-height: 1.25;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Fix column spacing and prevent shifting */
+    div[data-testid="column"] {
+        flex-shrink: 0 !important;
+        min-width: 0 !important;
+    }
+    
+    /* Ensure dropdown content stays within column bounds */
+    .stColumn .stButton {
+        width: 100% !important;
+        margin: 0 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     col1, col2, col3, col4 = st.columns(4)
+    
+    # Add alignment debugging CSS
+    st.markdown("""
+    <style>
+    /* Force strict column alignment and prevent overflow */
+    .row-widget.stHorizontal {
+        display: flex !important;
+        align-items: flex-start !important;
+        width: 100% !important;
+    }
+    
+    .row-widget.stHorizontal > div {
+        flex: 1 !important;
+        width: 25% !important;
+        max-width: 25% !important;
+        min-width: 0 !important;
+        padding-right: 0.5rem !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+    }
+    
+    .row-widget.stHorizontal > div:last-child {
+        padding-right: 0 !important;
+    }
+    
+    /* Force all content within columns to respect boundaries */
+    .stColumn > div > div > div {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+    }
+    
+    /* Ensure buttons don't extend beyond column width */
+    .stColumn .stButton {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+    }
+    
+    .stColumn .stButton > button {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
     # Section 1: Healthy Baseline
     with col1:
@@ -2549,33 +2721,19 @@ def page_dashboard():
             for name, page, key in drill_activities:
                 drill_completed = completed.get(key, False)
                 
-                # More specific CSS targeting with higher specificity
+                # Add visual indicator in button text for completed items
+                button_text = f"✅ {name}" if drill_completed else name
+                
                 if drill_completed:
                     st.markdown(f"""
                     <style>
-                    /* High specificity CSS for completed drill button */
                     div[data-testid="stButton"] > button[key="drill_{key}"] {{
                         background: rgba(34, 197, 94, 0.5) !important;
                         border: 2px solid rgba(34, 197, 94, 0.8) !important;
                         box-shadow: 0 0 10px rgba(34, 197, 94, 0.3) !important;
                     }}
-                    
-                    /* Alternative targeting in case the above doesn't work */
-                    button[data-testid*="drill_{key}"] {{
-                        background: rgba(34, 197, 94, 0.5) !important;
-                        border: 2px solid rgba(34, 197, 94, 0.8) !important;
-                    }}
-                    
-                    /* General completed button styling */
-                    .completed-drill-{key} {{
-                        background: rgba(34, 197, 94, 0.5) !important;
-                        border: 2px solid rgba(34, 197, 94, 0.8) !important;
-                    }}
                     </style>
                     """, unsafe_allow_html=True)
-                
-                # Add visual indicator in button text for completed items
-                button_text = f"✅ {name}" if drill_completed else name
                 
                 if st.button(button_text, key=f"drill_{key}", use_container_width=True):
                     st.session_state["page"] = page
@@ -2633,16 +2791,21 @@ def page_dashboard():
             for name, page, key in additional_activities:
                 activity_completed = completed.get(key, False)
                 
+                # Add visual indicator in button text for completed items
+                button_text = f"✅ {name}" if activity_completed else name
+                
                 if activity_completed:
                     st.markdown(f"""
                     <style>
                     div[data-testid="stButton"] > button[key="additional_{key}"] {{
                         background: rgba(34, 197, 94, 0.5) !important;
+                        border: 2px solid rgba(34, 197, 94, 0.8) !important;
+                        box-shadow: 0 0 10px rgba(34, 197, 94, 0.3) !important;
                     }}
                     </style>
                     """, unsafe_allow_html=True)
                 
-                if st.button(f"{name}", key=f"additional_{key}", use_container_width=True):
+                if st.button(button_text, key=f"additional_{key}", use_container_width=True):
                     st.session_state["page"] = page
                     st.rerun()
 
@@ -3275,11 +3438,12 @@ def page_topic_study():
             with st.spinner("Finding top papers, videos, and resources..."):
                 references = generate_ai_content(
                     f"Find the most authoritative and helpful external references for learning about: {topic['topic']} in {topic['domain']}. "
-                    f"Provide: 1) 3-5 top research papers or academic articles (with specific titles and authors if possible), "
-                    f"2) 2-3 excellent YouTube videos or educational channels, "
-                    f"3) 2-3 high-quality websites or online resources, "
-                    f"4) 1-2 recommended books for deeper study. "
-                    f"Format clearly with sections and include brief descriptions of why each resource is valuable."
+                    f"Provide: 1) 3-5 top research papers or academic articles with specific titles, authors, and DOI/URLs when possible, "
+                    f"2) 2-3 excellent YouTube videos with channel names and video titles (include actual YouTube URLs if known), "
+                    f"3) 2-3 high-quality websites or online resources with URLs, "
+                    f"4) 1-2 recommended books with ISBN numbers when possible. "
+                    f"Format as markdown with clickable links where possible. Include brief descriptions of why each resource is valuable. "
+                    f"For YouTube videos, try to include actual working links like https://www.youtube.com/watch?v=VIDEO_ID or channel URLs."
                 )
                 st.session_state[f"references_{daily_topic_key}"] = references
                 st.rerun()
@@ -4444,7 +4608,7 @@ def _task_switch_finish():
         adaptive_update("stroop", level_idx, accuracy=overall_acc/100.0)  # Reuse stroop adaptive
         
         # Mark as completed
-        mark_completed("stroop")  # Reuse stroop completion tracking
+        mark_completed("task_switching")  # Use correct completion key for dashboard
         save_state()
         
         # Strategy feedback
@@ -5311,6 +5475,169 @@ def page_argmap():
 import requests
 from datetime import datetime
 
+def generate_ai_anchoring_task():
+    """Generate a random anchoring bias task using OpenAI API"""
+    api_key = get_ai_api_key()
+    if not api_key or not openai:
+        # Fallback to predefined tasks if no API key
+        tasks = [
+            {
+                "type": "classic_anchoring",
+                "anchor_high": "Do you think the population of Chicago is greater or less than 8 million?",
+                "anchor_low": "Do you think the population of Chicago is greater or less than 1 million?",
+                "question": "What is the population of Chicago?",
+                "correct_answer": "2,700,000",
+                "explanation": "Chicago has approximately 2.7 million people."
+            },
+            {
+                "type": "fermi_estimation",
+                "anchor_high": "Do you think there are more or less than 50 million lightbulbs in New York City?",
+                "anchor_low": "Do you think there are more or less than 500,000 lightbulbs in New York City?",
+                "question": "Estimate: How many lightbulbs are there in New York City?",
+                "correct_answer": "15,000,000",
+                "explanation": "Rough calculation: ~8M people, ~3M households/businesses, ~5 bulbs per unit = ~15M lightbulbs"
+            }
+        ]
+        return random.choice(tasks)
+    
+    try:
+        # Generate a random anchoring task using OpenAI
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an expert in cognitive psychology and anchoring bias research. Create anchoring bias exercises for training."},
+                {"role": "user", "content": """Create a new anchoring bias task. Choose randomly from these types:
+1. Population estimation (cities, countries, etc.)
+2. Market size estimation (industries, companies)
+3. Physical measurements (distances, weights, heights)
+4. Historical quantities (dates, numbers)
+5. Fermi estimation problems
+
+Return a JSON object with this exact structure:
+{
+    "type": "brief_category",
+    "anchor_high": "question with high anchor (e.g., 'Is X greater or less than [HIGH_NUMBER]?')",
+    "anchor_low": "question with low anchor (e.g., 'Is X greater or less than [LOW_NUMBER]?')",
+    "question": "estimation question without anchor",
+    "correct_answer": "numerical answer as string",
+    "explanation": "brief explanation with reasoning"
+}
+
+Make the high anchor 3-10x higher than correct answer, low anchor 3-10x lower. Keep it realistic and educational."""}
+            ],
+            temperature=0.8,
+            max_tokens=400
+        )
+        
+        content = response.choices[0].message.content.strip()
+        
+        # Try to parse JSON response
+        import json
+        if content.startswith('```json'):
+            content = content.split('```json')[1].split('```')[0].strip()
+        elif content.startswith('```'):
+            content = content.split('```')[1].split('```')[0].strip()
+        
+        task = json.loads(content)
+        
+        # Validate required fields
+        required_fields = ["anchor_high", "anchor_low", "question", "correct_answer", "explanation"]
+        if all(field in task for field in required_fields):
+            return task
+        else:
+            raise Exception("Missing required fields in AI response")
+            
+    except Exception as e:
+        # Fallback to predefined task if AI generation fails
+        tasks = [
+            {
+                "type": "classic_anchoring",
+                "anchor_high": "Do you think the population of Sydney is greater or less than 10 million?",
+                "anchor_low": "Do you think the population of Sydney is greater or less than 1 million?",
+                "question": "What is the population of Sydney, Australia?",
+                "correct_answer": "5,300,000",
+                "explanation": "Sydney has approximately 5.3 million people in its metropolitan area."
+            }
+        ]
+        return random.choice(tasks)
+
+
+def generate_ai_base_rate_task():
+    """Generate a random base rate neglect task using OpenAI API"""
+    api_key = get_ai_api_key()
+    if not api_key or not openai:
+        # Fallback to predefined tasks if no API key
+        tasks = [
+            {
+                "scenario": "Medical Test Accuracy",
+                "description": "A rare disease affects 1 in 1000 people. A test for this disease is 99% accurate (correctly identifies 99% of sick people and 99% of healthy people). If someone tests positive, what's the probability they actually have the disease?",
+                "intuitive_answer": "99%",
+                "correct_answer": "9%",
+                "explanation": "Using Bayes' theorem: True positives = 1×0.99 = 0.99, False positives = 999×0.01 = 9.99. Probability = 0.99/(0.99+9.99) = 9%"
+            }
+        ]
+        return random.choice(tasks)
+    
+    try:
+        # Generate a random base rate task using OpenAI
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an expert in cognitive psychology and Bayesian reasoning. Create base rate neglect exercises for training."},
+                {"role": "user", "content": """Create a new base rate neglect problem. Choose randomly from these scenarios:
+1. Medical testing (disease prevalence, test accuracy)
+2. Criminal identification (lineup accuracy, crime rates)
+3. Quality control (defect rates, inspection accuracy)
+4. Job interviews (success rates, assessment accuracy)
+5. Academic testing (student ability, test reliability)
+
+Return a JSON object with this exact structure:
+{
+    "scenario": "brief title",
+    "description": "problem description with base rate and test/indicator accuracy clearly stated",
+    "intuitive_answer": "what most people incorrectly think (usually ignoring base rate)",
+    "correct_answer": "correct Bayesian answer as percentage",
+    "explanation": "step-by-step Bayesian reasoning explanation"
+}
+
+Make sure the base rate is low (1-10%) so base rate neglect creates a strong bias. Include specific numbers for calculation."""}
+            ],
+            temperature=0.8,
+            max_tokens=500
+        )
+        
+        content = response.choices[0].message.content.strip()
+        
+        # Try to parse JSON response
+        import json
+        if content.startswith('```json'):
+            content = content.split('```json')[1].split('```')[0].strip()
+        elif content.startswith('```'):
+            content = content.split('```')[1].split('```')[0].strip()
+        
+        task = json.loads(content)
+        
+        # Validate required fields
+        required_fields = ["scenario", "description", "intuitive_answer", "correct_answer", "explanation"]
+        if all(field in task for field in required_fields):
+            return task
+        else:
+            raise Exception("Missing required fields in AI response")
+            
+    except Exception as e:
+        # Fallback to predefined task if AI generation fails
+        tasks = [
+            {
+                "scenario": "Security Screening",
+                "description": "At an airport, 1 in 5000 passengers carries prohibited items. The security scanner is 95% accurate (correctly identifies 95% of prohibited items and 95% of allowed items). If the scanner flags someone, what's the probability they actually have prohibited items?",
+                "intuitive_answer": "95%",
+                "correct_answer": "4%",
+                "explanation": "Using Bayes' theorem: True positives = 1×0.95 = 0.95, False positives = 4999×0.05 = 249.95. Probability = 0.95/(0.95+249.95) = 4%"
+            }
+        ]
+        return random.choice(tasks)
+
+
 def get_daily_content(content_type="crt"):
     """Fetch daily content from online sources or fallback to local"""
     # Use date as seed for consistent daily content
@@ -5553,14 +5880,15 @@ def page_base_rate():
             "stage": "question",  # question -> answer -> explanation
             "user_answer": "",
             "start_time": time.time(),
-            "completed": False
+            "completed": False,
+            "correct": None  # Store correctness for explanation stage
         }
     
     br = st.session_state["base_rate"]
     
-    # Get daily base rate problem
+    # Get or generate new base rate problem
     if not br["problem"]:
-        br["problem"] = get_daily_content("base_rate")
+        br["problem"] = generate_ai_base_rate_task()
     
     problem = br["problem"]
     
@@ -5626,6 +5954,7 @@ def page_base_rate():
         if st.button("Show Explanation", key="br_explain"):
             br["stage"] = "explanation"
             br["completed"] = True
+            br["correct"] = correct  # Store correctness for explanation stage
             
             # Record performance
             elapsed_time = time.time() - br["start_time"]
@@ -5652,6 +5981,7 @@ def page_base_rate():
         
         # Performance stats with scoring
         elapsed_time = time.time() - br["start_time"]
+        correct = br["correct"]  # Get correctness from session state
         accuracy = 1.0 if correct else 0.0
         
         # Record performance and update difficulty
@@ -5712,70 +6042,21 @@ def page_anchoring():
     
     anchor = st.session_state["anchoring"]
     
-    # Enhanced daily anchoring tasks with Fermi estimation problems
-    daily_tasks = [
-        {
-            "type": "classic_anchoring",
-            "anchor_high": "Do you think the population of Chicago is greater or less than 8 million?",
-            "anchor_low": "Do you think the population of Chicago is greater or less than 1 million?",
-            "question": "What is the population of Chicago?",
-            "correct_answer": "2,700,000",
-            "explanation": "Chicago has approximately 2.7 million people."
-        },
-        {
-            "type": "fermi_estimation",
-            "anchor_high": "Do you think there are more or less than 50 million lightbulbs in New York City?",
-            "anchor_low": "Do you think there are more or less than 500,000 lightbulbs in New York City?",
-            "question": "Estimate: How many lightbulbs are there in New York City?",
-            "correct_answer": "15,000,000",
-            "explanation": "Rough calculation: ~8M people, ~3M households/businesses, ~5 bulbs per unit = ~15M lightbulbs"
-        },
-        {
-            "type": "fermi_estimation", 
-            "anchor_high": "Do you think a typical car weighs more or less than 5,000 pounds?",
-            "anchor_low": "Do you think a typical car weighs more or less than 1,000 pounds?",
-            "question": "What is the weight of an average passenger car?",
-            "correct_answer": "3,200",
-            "explanation": "Average passenger car weighs about 3,200 pounds (1,450 kg)"
-        },
-        {
-            "type": "fermi_estimation",
-            "anchor_high": "Are there more or less than 10,000 piano tuners in the United States?",
-            "anchor_low": "Are there more or less than 100 piano tuners in the United States?",
-            "question": "How many piano tuners are there in the United States?",
-            "correct_answer": "2,000",
-            "explanation": "Classic Fermi problem: ~330M people, ~20% have pianos, tune 2x/year, 1 tuner services ~1,000 pianos/year"
-        },
-        {
-            "type": "business_estimation",
-            "anchor_high": "Does McDonald's serve more or less than 200 million customers per day globally?",
-            "anchor_low": "Does McDonald's serve more or less than 10 million customers per day globally?",
-            "question": "How many customers does McDonald's serve per day worldwide?",
-            "correct_answer": "70,000,000",
-            "explanation": "McDonald's serves approximately 70 million customers daily across 40,000+ restaurants"
-        },
-        {
-            "type": "geographic_estimation",
-            "anchor_high": "Is the distance from New York to Los Angeles more or less than 5,000 miles?",
-            "anchor_low": "Is the distance from New York to Los Angeles more or less than 1,500 miles?",
-            "question": "What is the distance from New York City to Los Angeles?",
-            "correct_answer": "2,800",
-            "explanation": "The distance from NYC to LA is approximately 2,800 miles (4,500 km)"
-        },
-        {
-            "type": "market_estimation",
-            "anchor_high": "Is the global coffee market worth more or less than $500 billion per year?",
-            "anchor_low": "Is the global coffee market worth more or less than $50 billion per year?",
-            "question": "What is the value of the global coffee market per year?",
-            "correct_answer": "100,000,000,000",
-            "explanation": "The global coffee market is valued at approximately $100 billion annually"
+    # Safety check in case anchoring was reset to None
+    if anchor is None:
+        st.session_state["anchoring"] = {
+            "task": None,
+            "anchor_shown": False,
+            "user_estimate": "",
+            "start_time": time.time(),
+            "completed": False,
+            "anchor_type": None  # high or low
         }
-    ]
+        anchor = st.session_state["anchoring"]
     
-    # Get daily task based on date
+    # Get or generate new task
     if not anchor["task"]:
-        daily_seed = hash(today_iso()) % len(daily_tasks)
-        anchor["task"] = daily_tasks[daily_seed]
+        anchor["task"] = generate_ai_anchoring_task()
         # Randomly assign high or low anchor
         anchor["anchor_type"] = random.choice(["high", "low"])
     
@@ -7122,18 +7403,27 @@ with st.sidebar:
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Save Key", key="save_api_key"):
-                S().setdefault("settings", {})["apiKey"] = new_key.strip()
-                save_state()
-                # Persist to browser localStorage for convenience
-                try:
-                    components.html(f"""
-                    <script>
-                    localStorage.setItem('maxmind_openai_key', '{new_key.strip()}');
-                    </script>
-                    """, height=0)
-                except Exception:
-                    pass
-                st.success("API key saved.")
+                clean_key = new_key.strip()
+                if clean_key and clean_key.startswith("sk-"):
+                    S().setdefault("settings", {})["apiKey"] = clean_key
+                    save_state()
+                    # Persist to browser localStorage for convenience (safely escaped)
+                    try:
+                        import json
+                        escaped_key = json.dumps(clean_key)
+                        components.html(f"""
+                        <script>
+                        localStorage.setItem('maxmind_openai_key', {escaped_key});
+                        </script>
+                        """, height=0)
+                    except Exception:
+                        pass
+                    st.success("API key saved.")
+                    st.rerun()
+                elif clean_key:
+                    st.error("Invalid API key format. OpenAI keys start with 'sk-'")
+                else:
+                    st.error("Please enter an API key")
         with c2:
             if st.button("Clear Key", key="clear_api_key"):
                 S().setdefault("settings", {})["apiKey"] = ""
@@ -7147,6 +7437,20 @@ with st.sidebar:
                 except Exception:
                     pass
                 st.success("API key cleared.")
+                st.rerun()
+
+        # Status indicator
+        active = bool(get_ai_api_key())
+        st.caption("Status: " + ("✅ AI enabled" if active else "⚠️ AI disabled (using fallback)"))
+        
+        # Debug info for troubleshooting
+        if active:
+            current_key = get_ai_api_key()
+            if current_key:
+                masked_key = current_key[:7] + "..." + current_key[-4:] if len(current_key) > 11 else "***"
+                st.caption(f"Key: {masked_key}")
+            else:
+                st.caption("Key: None found")
 
     st.markdown("---")
     
