@@ -1409,10 +1409,21 @@ def check_daily_reset():
         state["daily"] = {
             "last_reset": today,
             "completed": {
-                "review": False, "nback": False, "task_switching": False,
-                "complex_span": False, "gng": False, "processing_speed": False,
-                "mental_math": False, "writing": False, "forecasts": False,
-                "world_model_a": False, "world_model_b": False, "topic_study": False
+                "review": False,
+                "nback": False,
+                "task_switching": False,
+                "complex_span": False,
+                "gng": False,
+                "processing_speed": False,
+                "mental_math": False,
+                "writing": False,
+                "forecasts": False,
+                "crt": False,
+                "base_rate": False,
+                "anchoring": False,
+                "world_model_a": False,
+                "world_model_b": False,
+                "topic_study": False
             },
             "completion_history": {}
         }
@@ -1422,6 +1433,16 @@ def check_daily_reset():
     # Initialize completion_history if it doesn't exist
     if "completion_history" not in state["daily"]:
         state["daily"]["completion_history"] = {}
+    
+    # Ensure all completion keys exist (for users who may have older state)
+    required_keys = [
+        "review", "nback", "task_switching", "complex_span", "gng", 
+        "processing_speed", "mental_math", "writing", "forecasts", 
+        "crt", "base_rate", "anchoring", "world_model_a", "world_model_b", "topic_study"
+    ]
+    for key in required_keys:
+        if key not in state["daily"]["completed"]:
+            state["daily"]["completed"][key] = False
     
     # Reset if it's a new day
     if state["daily"]["last_reset"] != today:
