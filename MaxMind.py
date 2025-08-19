@@ -40,7 +40,7 @@ def get_ai_api_key() -> Optional[str]:
     if not key:
         key = os.environ.get("openai_api_key")
     try:
-        # Check session state safely
+        # Check session state safely - FIRST check the main state
         if not key and KEY in st.session_state:
             settings = st.session_state[KEY].get("settings", {})
             key = settings.get("apiKey") or settings.get("openai_api_key") or settings.get("openaiKey")
@@ -66,8 +66,19 @@ def generate_ai_content(prompt: str) -> str:
         )
 
     try:
-        # Lazy import to avoid hard dependency at startup
-        import openai  # type: ignore
+        # Try importing openai if not already available
+        if openai is None:
+            try:
+                import openai as openai_module
+            except ImportError:
+                return (
+                    "❌ **OpenAI Package Missing**: Please install the OpenAI package:\n\n"
+                    "```pip install openai```\n\n"
+                    "Fallback content based on your prompt:\n\n"
+                    + prompt.strip()[:500]
+                )
+        else:
+            openai_module = openai
 
         # Allow model override via settings; default to a lightweight, capable model
         model = None
@@ -80,7 +91,7 @@ def generate_ai_content(prompt: str) -> str:
             # Prefer a modern, cost-effective model; fall back to 3.5 if needed
             model = "gpt-4o-mini"
 
-        client = openai.OpenAI(api_key=api_key)
+        client = openai_module.OpenAI(api_key=api_key)
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -126,15 +137,25 @@ def setup_ai_configuration():
     # Non-blocking placeholder to avoid NameError if referenced
     if "settings" not in st.session_state:
         st.session_state["settings"] = {}
+    # Ensure settings are also in the main state
+    if "settings" not in S():
+        S()["settings"] = {}
     # Try to load key from env once
-    if not st.session_state["settings"].get("apiKey"):
+    if not S()["settings"].get("apiKey"):
         env_key = os.environ.get("OPENAI_API_KEY")
         if env_key:
+            S()["settings"]["apiKey"] = env_key
             st.session_state["settings"]["apiKey"] = env_key
 
 def generate_category_topic(category: str):
     """Generate AI-powered topic for Topic Study page"""
     api_key = get_ai_api_key()
+    
+    # Debug: Show API key status
+    if not api_key:
+        st.error("❌ **No API Key Found**: AI generation requires an OpenAI API key.")
+        st.info("💡 **How to add your API key:**\n1. Go to the sidebar\n2. Find 'AI Configuration'\n3. Enter your OpenAI API key\n4. Click 'Save Key'")
+    
     if not api_key:
         # Fallback to static topic
         return {
@@ -5478,7 +5499,7 @@ from datetime import datetime
 def generate_ai_anchoring_task():
     """Generate a random anchoring bias task using OpenAI API"""
     api_key = get_ai_api_key()
-    if not api_key or not openai:
+    if not api_key:
         # Fallback to predefined tasks if no API key
         tasks = [
             {
@@ -5501,8 +5522,29 @@ def generate_ai_anchoring_task():
         return random.choice(tasks)
     
     try:
+        # Try importing openai if not already available
+        if openai is None:
+            try:
+                import openai as openai_module
+            except ImportError:
+                # Fallback to predefined tasks if no OpenAI package
+                tasks = [
+                    {
+                        "type": "classic_anchoring",
+                        "anchor_high": "Do you think the population of Sydney is greater or less than 10 million?",
+                        "anchor_low": "Do you think the population of Sydney is greater or less than 1 million?",
+                        "question": "What is the population of Sydney, Australia?",
+                        "correct_answer": "5,300,000",
+                        "explanation": "Sydney has approximately 5.3 million people in its metropolitan area."
+                    }
+                ]
+                return random.choice(tasks)
+        else:
+            openai_module = openai
+
         # Generate a random anchoring task using OpenAI
-        response = openai.chat.completions.create(
+        client = openai_module.OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are an expert in cognitive psychology and anchoring bias research. Create anchoring bias exercises for training."},
@@ -5565,7 +5607,7 @@ Make the high anchor 3-10x higher than correct answer, low anchor 3-10x lower. K
 def generate_ai_base_rate_task():
     """Generate a random base rate neglect task using OpenAI API"""
     api_key = get_ai_api_key()
-    if not api_key or not openai:
+    if not api_key:
         # Fallback to predefined tasks if no API key
         tasks = [
             {
@@ -5579,8 +5621,28 @@ def generate_ai_base_rate_task():
         return random.choice(tasks)
     
     try:
+        # Try importing openai if not already available
+        if openai is None:
+            try:
+                import openai as openai_module
+            except ImportError:
+                # Fallback to predefined tasks if no OpenAI package
+                tasks = [
+                    {
+                        "scenario": "Security Screening",
+                        "description": "At an airport, 1 in 5000 passengers carries prohibited items. The security scanner is 95% accurate (correctly identifies 95% of prohibited items and 95% of allowed items). If the scanner flags someone, what's the probability they actually have prohibited items?",
+                        "intuitive_answer": "95%",
+                        "correct_answer": "4%",
+                        "explanation": "Using Bayes' theorem: True positives = 1×0.95 = 0.95, False positives = 4999×0.05 = 249.95. Probability = 0.95/(0.95+249.95) = 4%"
+                    }
+                ]
+                return random.choice(tasks)
+        else:
+            openai_module = openai
+
         # Generate a random base rate task using OpenAI
-        response = openai.chat.completions.create(
+        client = openai_module.OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are an expert in cognitive psychology and Bayesian reasoning. Create base rate neglect exercises for training."},
