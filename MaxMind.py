@@ -1537,6 +1537,75 @@ def is_completed_today(activity: str) -> bool:
 
 # ========== World-Model Learning Curriculum ==========
 WORLD_MODEL_TRACKS = {
+    "cognitive_strategies": {
+        "name": "Cognitive Strategy Training",
+        "lessons": [
+            {
+                "title": "Working Memory Strategies",
+                "content": "**Chunking**: Group information into meaningful units (phone numbers: 555-123-4567 not 5551234567). **Rehearsal**: Active repetition and elaboration. **Visualization**: Convert abstract info to mental images. **Dual Coding**: Use both verbal and visual memory systems.",
+                "example": "Remembering a grocery list: chunk by categories (dairy, produce), visualize items in your kitchen, create a story linking items.",
+                "questions": [
+                    "How does chunking increase working memory capacity?",
+                    "When is visualization most effective?",
+                    "What's the difference between maintenance and elaborative rehearsal?"
+                ],
+                "transfer": "Apply to: studying complex material, following multi-step instructions, or managing information overload at work.",
+                "strategy_practice": {
+                    "task": "Practice chunking with random letter sequences",
+                    "instructions": "You'll see 12 random letters. Try to chunk them into groups of 3-4 meaningful units.",
+                    "scoring": "Track improvement in recall accuracy when using chunking vs. rote memorization"
+                }
+            },
+            {
+                "title": "Attention Control Strategies", 
+                "content": "**Selective Attention**: Focus on relevant information while filtering distractions. **Sustained Attention**: Maintain focus over time using attention anchors. **Executive Attention**: Monitor and resolve conflicts between competing information. **Attention Restoration**: Strategic breaks and environmental design.",
+                "example": "Reading in a noisy café: use selective attention to filter noise, take periodic breaks to restore focus, position yourself to minimize visual distractions.",
+                "questions": [
+                    "What's the difference between bottom-up and top-down attention?",
+                    "How can you train sustained attention?",
+                    "What environments support vs. drain attention?"
+                ],
+                "transfer": "Apply to: improving focus during meetings, reducing phone distractions, or enhancing reading comprehension.",
+                "strategy_practice": {
+                    "task": "Focused breathing with distraction resistance",
+                    "instructions": "Focus on breath counting while ignoring background distractions. Notice when attention wanders and gently redirect.",
+                    "scoring": "Track duration of sustained focus and speed of attention recovery"
+                }
+            },
+            {
+                "title": "Problem-Solving Strategies",
+                "content": "**Decomposition**: Break complex problems into smaller, manageable parts. **Analogical Reasoning**: Find similar problems you've solved before. **Constraint Relaxation**: Remove assumptions to explore new solution spaces. **Working Backwards**: Start from the goal and reverse-engineer steps.",
+                "example": "Planning a career change: decompose into skills needed, timeline, financial requirements. Find analogies from others' transitions. Work backwards from ideal outcome.",
+                "questions": [
+                    "How does decomposition reduce cognitive load?",
+                    "When is analogical reasoning most helpful?",
+                    "What assumptions might you need to relax?"
+                ],
+                "transfer": "Apply to: software debugging, business strategy, or personal decision-making.",
+                "strategy_practice": {
+                    "task": "Multi-step logic puzzles with strategy prompts",
+                    "instructions": "Solve puzzles while explicitly using decomposition, analogy, or working backwards. Reflect on which strategies work best.",
+                    "scoring": "Track solution time and accuracy improvement with different strategies"
+                }
+            },
+            {
+                "title": "Metacognitive Strategies",
+                "content": "**Strategy Monitoring**: Track which strategies work best for different types of tasks. **Confidence Calibration**: Match confidence levels to actual performance. **Error Detection**: Catch and correct mistakes before they compound. **Strategy Selection**: Choose optimal approaches based on task demands.",
+                "example": "Before starting a complex project: assess task type, select appropriate strategies, monitor progress, adjust approach based on feedback.",
+                "questions": [
+                    "How do experts differ in metacognitive awareness?",
+                    "What causes overconfidence vs. underconfidence?",
+                    "How can you improve error detection?"
+                ],
+                "transfer": "Apply to: learning new skills efficiently, improving decision quality, or reducing errors in your work.",
+                "strategy_practice": {
+                    "task": "Strategy selection for varied cognitive tasks",
+                    "instructions": "Before each task, predict which strategy will work best. After completion, reflect on accuracy of prediction.",
+                    "scoring": "Track improvement in strategy selection accuracy and metacognitive awareness"
+                }
+            }
+        ]
+    },
     "probabilistic_reasoning": {
         "name": "Probabilistic Reasoning & Stats",
         "lessons": [
@@ -2412,6 +2481,587 @@ def render_calendar_grid():
             st.metric("Avg Completion", f"{avg_completion:.1f}%")
 
 # ========== Pages ==========
+
+def page_real_world_transfer():
+    """Real-World Transfer Tasks - Bridge cognitive training to practical applications"""
+    st.header("🌍 Real-World Transfer")
+    st.markdown("*Bridge your cognitive training to real-world performance*")
+    
+    # Initialize state
+    s = S()
+    rw_state = s.setdefault("real_world_transfer", {})
+    
+    # Category selection
+    categories = {
+        "Academic Performance": {
+            "icon": "📚", 
+            "description": "Study techniques, test-taking, research skills",
+            "tasks": [
+                {
+                    "name": "Strategic Reading",
+                    "description": "Apply working memory strategies to complex texts",
+                    "strategy": "chunking", 
+                    "domain": "academic",
+                    "difficulty": 1
+                },
+                {
+                    "name": "Test Strategy Planning", 
+                    "description": "Use metacognitive strategies for exam preparation",
+                    "strategy": "metacognitive",
+                    "domain": "academic", 
+                    "difficulty": 2
+                },
+                {
+                    "name": "Research Synthesis",
+                    "description": "Apply attention control to manage multiple sources",
+                    "strategy": "attention_control",
+                    "domain": "academic",
+                    "difficulty": 3
+                }
+            ]
+        },
+        "Professional Skills": {
+            "icon": "💼",
+            "description": "Decision-making, project management, communication",
+            "tasks": [
+                {
+                    "name": "Meeting Management", 
+                    "description": "Use attention strategies to track multiple discussion threads",
+                    "strategy": "attention_control",
+                    "domain": "professional",
+                    "difficulty": 1
+                },
+                {
+                    "name": "Project Planning",
+                    "description": "Apply problem-solving strategies to break down complex projects", 
+                    "strategy": "problem_solving",
+                    "domain": "professional",
+                    "difficulty": 2
+                },
+                {
+                    "name": "Decision Analysis",
+                    "description": "Use metacognitive strategies to evaluate decision quality",
+                    "strategy": "metacognitive", 
+                    "domain": "professional",
+                    "difficulty": 3
+                }
+            ]
+        },
+        "Daily Life": {
+            "icon": "🏠",
+            "description": "Time management, financial planning, life organization",
+            "tasks": [
+                {
+                    "name": "Time Blocking",
+                    "description": "Apply working memory strategies to schedule management",
+                    "strategy": "chunking",
+                    "domain": "daily",
+                    "difficulty": 1
+                },
+                {
+                    "name": "Financial Planning",
+                    "description": "Use problem-solving strategies for budget optimization",
+                    "strategy": "problem_solving", 
+                    "domain": "daily",
+                    "difficulty": 2
+                },
+                {
+                    "name": "Goal Achievement",
+                    "description": "Apply metacognitive strategies to track progress",
+                    "strategy": "metacognitive",
+                    "domain": "daily",
+                    "difficulty": 3
+                }
+            ]
+        }
+    }
+    
+    # Category tabs
+    category_names = list(categories.keys())
+    selected_category = st.selectbox("Choose Application Domain", category_names)
+    
+    category_data = categories[selected_category]
+    st.markdown(f"### {category_data['icon']} {selected_category}")
+    st.markdown(f"*{category_data['description']}*")
+    
+    # Task selection
+    tasks = category_data["tasks"]
+    task_names = [f"{task['name']} (Level {task['difficulty']})" for task in tasks]
+    selected_task_idx = st.selectbox("Select Transfer Task", range(len(task_names)), format_func=lambda x: task_names[x])
+    
+    selected_task = tasks[selected_task_idx]
+    
+    # Task interface
+    st.markdown("---")
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown(f"#### {selected_task['name']}")
+        st.markdown(f"**Strategy Focus:** {selected_task['strategy'].replace('_', ' ').title()}")
+        st.markdown(f"**Description:** {selected_task['description']}")
+        
+        # Get strategy content from WORLD_MODEL_TRACKS
+        strategy_track = WORLD_MODEL_TRACKS.get("cognitive_strategies", {})
+        strategy_lessons = strategy_track.get("lessons", {})
+        
+        # Find matching strategy lesson
+        strategy_mapping = {
+            "chunking": "working_memory_strategies",
+            "attention_control": "attention_control_strategies", 
+            "problem_solving": "problem_solving_strategies",
+            "metacognitive": "metacognitive_strategies"
+        }
+        
+        lesson_key = strategy_mapping.get(selected_task["strategy"])
+        if lesson_key and lesson_key in strategy_lessons:
+            lesson = strategy_lessons[lesson_key]
+            
+            # Show strategy reminder
+            with st.expander("📋 Strategy Review", expanded=False):
+                st.markdown(f"**Strategy:** {lesson['content']}")
+                if 'examples' in lesson:
+                    st.markdown("**Examples:**")
+                    for example in lesson['examples']:
+                        st.markdown(f"• {example}")
+        
+        # Task execution phase
+        task_key = f"{selected_category}_{selected_task['name']}"
+        task_state = rw_state.setdefault(task_key, {"phase": "instruction", "attempts": 0, "score": 0})
+        
+        if task_state["phase"] == "instruction":
+            st.markdown("#### 🎯 Task Instructions")
+            
+            # Generate task-specific instructions
+            instructions = generate_transfer_task_instructions(selected_task, selected_category)
+            st.markdown(instructions)
+            
+            if st.button("Start Task", use_container_width=True):
+                task_state["phase"] = "execution"
+                task_state["start_time"] = time.time()
+                save_state()
+                st.rerun()
+                
+        elif task_state["phase"] == "execution":
+            st.markdown("#### 🎯 Task Execution")
+            
+            # Generate task content
+            task_content = generate_transfer_task_content(selected_task, selected_category)
+            st.markdown(task_content)
+            
+            # Strategy application tracking
+            st.markdown("#### 📊 Strategy Application")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                strategy_used = st.multiselect(
+                    "Which strategies did you consciously apply?",
+                    ["Chunking", "Rehearsal", "Visualization", "Selective Attention", 
+                     "Sustained Attention", "Executive Attention", "Decomposition", 
+                     "Analogical Reasoning", "Constraint Relaxation", "Strategy Monitoring",
+                     "Confidence Calibration", "Error Detection"],
+                    key=f"strategies_{task_key}"
+                )
+            
+            with col2:
+                effectiveness = st.slider(
+                    "How effective were the strategies? (1-10)",
+                    1, 10, 5,
+                    key=f"effectiveness_{task_key}"
+                )
+            
+            # Task completion
+            user_response = st.text_area(
+                "Describe your approach and solution:",
+                height=150,
+                key=f"response_{task_key}"
+            )
+            
+            reflection = st.text_area(
+                "Reflection: How did you apply the cognitive strategies?",
+                height=100,
+                key=f"reflection_{task_key}"
+            )
+            
+            if st.button("Complete Task", use_container_width=True):
+                if user_response and reflection:
+                    # Calculate score based on strategy application
+                    strategy_score = len(strategy_used) * 10
+                    effectiveness_score = effectiveness * 5
+                    reflection_score = min(len(reflection.split()), 20) * 2
+                    
+                    total_score = min(strategy_score + effectiveness_score + reflection_score, 100)
+                    
+                    task_state["phase"] = "feedback"
+                    task_state["score"] = total_score
+                    task_state["strategies_used"] = strategy_used
+                    task_state["effectiveness"] = effectiveness
+                    task_state["response"] = user_response
+                    task_state["reflection"] = reflection
+                    task_state["completion_time"] = time.time() - task_state["start_time"]
+                    task_state["attempts"] += 1
+                    
+                    # Mark as completed for dashboard tracking
+                    mark_completed("real_world_transfer")
+                    
+                    save_state()
+                    st.rerun()
+                else:
+                    st.error("Please complete both the response and reflection sections.")
+        
+        elif task_state["phase"] == "feedback":
+            st.markdown("#### 🎉 Task Complete!")
+            
+            score = task_state["score"]
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Transfer Score", f"{score}/100")
+            with col2:
+                st.metric("Strategies Used", len(task_state["strategies_used"]))
+            with col3:
+                st.metric("Time", f"{task_state['completion_time']:.1f}s")
+            
+            # Performance feedback
+            if score >= 80:
+                st.success("🌟 Excellent transfer! You're effectively applying cognitive strategies to real-world tasks.")
+            elif score >= 60:
+                st.info("👍 Good transfer! Continue practicing strategy application for even better results.")
+            else:
+                st.warning("💪 Keep practicing! Focus on consciously applying more strategies and deeper reflection.")
+            
+            # Strategy feedback
+            st.markdown("#### 📈 Strategy Analysis")
+            if task_state["strategies_used"]:
+                st.markdown("**Strategies Applied:**")
+                for strategy in task_state["strategies_used"]:
+                    st.markdown(f"• {strategy}")
+            else:
+                st.markdown("*No strategies explicitly tracked - consider being more mindful of strategy use.*")
+            
+            # Show reflection
+            with st.expander("Your Reflection", expanded=True):
+                st.markdown(task_state["reflection"])
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Try Another Task", use_container_width=True):
+                    task_state["phase"] = "instruction"
+                    save_state()
+                    st.rerun()
+            
+            with col2:
+                if st.button("Return to Menu", use_container_width=True):
+                    st.session_state["page"] = "Dashboard"
+                    st.rerun()
+    
+    with col2:
+        # Progress tracking
+        st.markdown("#### 📊 Transfer Progress")
+        
+        # Calculate overall transfer performance
+        completed_tasks = [k for k, v in rw_state.items() if v.get("score", 0) > 0]
+        if completed_tasks:
+            avg_score = sum(rw_state[k]["score"] for k in completed_tasks) / len(completed_tasks)
+            total_attempts = sum(rw_state[k]["attempts"] for k in completed_tasks)
+            
+            st.metric("Avg Transfer Score", f"{avg_score:.1f}/100")
+            st.metric("Tasks Completed", len(completed_tasks))
+            st.metric("Total Attempts", total_attempts)
+            
+            # Progress by domain
+            domain_scores = {}
+            for task_key in completed_tasks:
+                domain = task_key.split("_")[0]
+                if domain not in domain_scores:
+                    domain_scores[domain] = []
+                domain_scores[domain].append(rw_state[task_key]["score"])
+            
+            st.markdown("**By Domain:**")
+            for domain, scores in domain_scores.items():
+                avg_domain = sum(scores) / len(scores)
+                st.markdown(f"• {domain}: {avg_domain:.1f}/100")
+        else:
+            st.info("Complete your first transfer task to see progress!")
+        
+        # Quick tips
+        st.markdown("#### 💡 Transfer Tips")
+        st.markdown("""
+        **For Better Transfer:**
+        • Consciously identify which strategies to use
+        • Practice explaining your reasoning
+        • Connect training to real situations
+        • Reflect on strategy effectiveness
+        • Apply multiple strategies together
+        """)
+
+def generate_transfer_task_instructions(task, category):
+    """Generate specific instructions for transfer tasks"""
+    base_instructions = {
+        "Academic Performance": {
+            "Strategic Reading": """
+            **Scenario:** You need to read and understand a complex research paper for an assignment.
+            
+            **Your Task:** Apply working memory strategies (chunking, rehearsal, visualization) to:
+            1. Break down the paper into manageable sections
+            2. Create mental models of key concepts
+            3. Connect ideas across sections
+            4. Summarize main findings
+            
+            **Success Criteria:** Demonstrate clear understanding and strategic approach to information processing.
+            """,
+            "Test Strategy Planning": """
+            **Scenario:** You have a comprehensive exam in 2 weeks covering multiple topics.
+            
+            **Your Task:** Use metacognitive strategies to:
+            1. Assess your current knowledge in each topic area
+            2. Identify your strengths and weaknesses
+            3. Create a study schedule that prioritizes weak areas
+            4. Plan specific study techniques for different content types
+            5. Set up self-testing and progress monitoring
+            
+            **Success Criteria:** Create a detailed, strategic study plan with built-in monitoring.
+            """,
+            "Research Synthesis": """
+            **Scenario:** You're writing a literature review requiring integration of 15+ sources.
+            
+            **Your Task:** Apply attention control strategies to:
+            1. Maintain focus while reading each source
+            2. Track common themes across sources
+            3. Identify contradictions and gaps
+            4. Organize information into coherent categories
+            5. Synthesize findings into original insights
+            
+            **Success Criteria:** Demonstrate systematic information management and synthesis.
+            """
+        },
+        "Professional Skills": {
+            "Meeting Management": """
+            **Scenario:** You're leading a project meeting with 8 people discussing 3 different work streams.
+            
+            **Your Task:** Use attention control strategies to:
+            1. Track multiple conversation threads simultaneously
+            2. Identify when discussions go off-topic
+            3. Manage your attention between listening and note-taking
+            4. Notice when team members seem confused or disengaged
+            5. Synthesize key decisions and action items
+            
+            **Success Criteria:** Maintain situational awareness and facilitate productive discussion.
+            """,
+            "Project Planning": """
+            **Scenario:** You need to plan a 6-month project with unclear requirements and multiple stakeholders.
+            
+            **Your Task:** Apply problem-solving strategies to:
+            1. Decompose the project into manageable phases
+            2. Identify potential risks and constraints
+            3. Find analogous successful projects for reference
+            4. Develop contingency plans for major risks
+            5. Create clear milestones and success metrics
+            
+            **Success Criteria:** Create a comprehensive, realistic project plan.
+            """,
+            "Decision Analysis": """
+            **Scenario:** Your team must choose between 3 software solutions with different trade-offs.
+            
+            **Your Task:** Use metacognitive strategies to:
+            1. Identify your decision-making biases
+            2. Systematically evaluate each option
+            3. Consider long-term consequences
+            4. Assess your confidence in each evaluation
+            5. Plan how to monitor the decision's success
+            
+            **Success Criteria:** Make a well-reasoned decision with clear justification.
+            """
+        },
+        "Daily Life": {
+            "Time Blocking": """
+            **Scenario:** You have a busy week with work, family, exercise, and personal projects to balance.
+            
+            **Your Task:** Apply working memory strategies to:
+            1. Chunk your tasks into logical categories
+            2. Visualize your ideal week structure
+            3. Rehearse your daily routines mentally
+            4. Create memory aids for schedule adherence
+            5. Build in flexibility for unexpected demands
+            
+            **Success Criteria:** Design a realistic, sustainable weekly schedule.
+            """,
+            "Financial Planning": """
+            **Scenario:** You want to save for a major purchase while managing current expenses and debts.
+            
+            **Your Task:** Use problem-solving strategies to:
+            1. Break down your financial situation into components
+            2. Identify areas where you can reduce spending
+            3. Find creative ways to increase income
+            4. Set up automatic systems for saving
+            5. Plan for financial setbacks
+            
+            **Success Criteria:** Create a practical financial plan with specific action steps.
+            """,
+            "Goal Achievement": """
+            **Scenario:** You want to develop a new skill (language, instrument, sport) over the next year.
+            
+            **Your Task:** Apply metacognitive strategies to:
+            1. Assess your current skill level honestly
+            2. Set specific, measurable milestones
+            3. Plan how to track your progress
+            4. Identify potential obstacles and solutions
+            5. Design a system for maintaining motivation
+            
+            **Success Criteria:** Create a strategic approach to skill development with built-in monitoring.
+            """
+        }
+    }
+    
+    return base_instructions.get(category, {}).get(task["name"], "Apply cognitive strategies to complete this real-world task.")
+
+def generate_transfer_task_content(task, category):
+    """Generate specific content/scenarios for transfer tasks"""
+    content_examples = {
+        "Academic Performance": {
+            "Strategic Reading": """
+            **Sample Text Excerpt:**
+            
+            *"The dual-process theory of cognition suggests that human reasoning operates through two distinct systems: System 1, characterized by automatic, fast, and intuitive processing, and System 2, involving deliberative, slow, and analytical thinking. Recent neuroimaging studies have revealed that these systems engage different neural networks, with System 1 primarily activating the default mode network and System 2 recruiting the central executive network. However, the interaction between these systems remains contentious, with some researchers proposing a more integrated model where the systems operate on a continuum rather than as discrete entities..."*
+            
+            **Your Challenge:** Apply chunking and visualization strategies to understand and summarize this complex text.
+            """,
+            "Test Strategy Planning": """
+            **Course Information:**
+            - **Biology 301:** 40% of exam (molecular biology, genetics, evolution)
+            - **Statistics:** 30% of exam (hypothesis testing, regression, ANOVA)  
+            - **Research Methods:** 30% of exam (experimental design, ethics, writing)
+            
+            **Your Current Knowledge (1-10 scale):**
+            - Molecular Biology: 6/10
+            - Genetics: 4/10
+            - Evolution: 8/10
+            - Statistics: 5/10
+            - Research Methods: 7/10
+            
+            **Your Challenge:** Create a 14-day study plan using metacognitive strategies.
+            """,
+            "Research Synthesis": """
+            **Research Topic:** "Effects of Social Media on Adolescent Mental Health"
+            
+            **Sources to Synthesize:**
+            - 5 studies showing negative effects
+            - 3 studies showing positive effects  
+            - 4 studies showing mixed results
+            - 3 review papers with different conclusions
+            
+            **Your Challenge:** Use attention control strategies to organize and synthesize conflicting evidence.
+            """
+        },
+        "Professional Skills": {
+            "Meeting Management": """
+            **Meeting Scenario:**
+            
+            **Attendees:** Product Manager, 2 Developers, Designer, QA Tester, Marketing Lead, Customer Success Rep, Project Manager
+            
+            **Agenda Items:**
+            1. Sprint review and blockers
+            2. New feature prioritization  
+            3. Customer feedback integration
+            
+            **Simulated Challenges:**
+            - Developer A keeps interrupting others
+            - Marketing wants to add scope mid-sprint
+            - Designer and Developer B disagree on implementation
+            - Customer Success has urgent but off-topic concerns
+            
+            **Your Challenge:** Use attention strategies to track all conversations and keep meeting productive.
+            """,
+            "Project Planning": """
+            **Project Brief:** "Implement company-wide digital transformation initiative"
+            
+            **Known Requirements:**
+            - Migrate 3 legacy systems
+            - Train 150+ employees
+            - Maintain business operations during transition
+            - Budget: $500K
+            - Timeline: 6 months
+            
+            **Unknowns:**
+            - Exact technical requirements
+            - Employee resistance levels
+            - Integration complexity
+            - Vendor reliability
+            
+            **Your Challenge:** Use problem-solving strategies to create a comprehensive plan despite uncertainty.
+            """,
+            "Decision Analysis": """
+            **Software Options:**
+            
+            **Option A:** Established vendor, high cost, proven reliability, limited customization
+            **Option B:** Startup vendor, moderate cost, innovative features, unknown long-term viability
+            **Option C:** Open source, low cost, full customization, requires internal expertise
+            
+            **Stakeholder Preferences:**
+            - IT: Wants Option C (technical control)
+            - Finance: Prefers Option B (cost-effective)
+            - Operations: Wants Option A (reliability)
+            
+            **Your Challenge:** Use metacognitive strategies to make an objective decision.
+            """
+        },
+        "Daily Life": {
+            "Time Blocking": """
+            **Weekly Commitments:**
+            - Work: 40 hours (flexible timing)
+            - Family time: 20 hours (evenings/weekends)
+            - Exercise: 5 hours (preferred mornings)
+            - Personal projects: 10 hours
+            - Household tasks: 8 hours
+            - Social activities: 6 hours
+            - Sleep: 56 hours (8/night)
+            
+            **Constraints:**
+            - Partner works evenings Tuesday-Thursday
+            - Kids need pickup at 3:30 PM weekdays
+            - Gym closes at 10 PM
+            - Grocery shopping must be weekends
+            
+            **Your Challenge:** Use chunking and visualization to create an optimal weekly schedule.
+            """,
+            "Financial Planning": """
+            **Current Situation:**
+            - Monthly income: $4,500 after taxes
+            - Fixed expenses: $3,200 (rent, utilities, insurance, minimum debt payments)
+            - Variable expenses: $800 (food, entertainment, misc)
+            - Current savings: $500/month
+            
+            **Goal:** Save $15,000 for home down payment in 18 months
+            
+            **Challenges:**
+            - Car needs $2,000 in repairs
+            - Want to take a vacation ($3,000)
+            - Emergency fund only has $2,000
+            
+            **Your Challenge:** Use problem-solving strategies to optimize your financial plan.
+            """,
+            "Goal Achievement": """
+            **Goal:** Learn conversational Spanish in 12 months
+            
+            **Current Level:** Complete beginner (know ~20 words)
+            
+            **Available Resources:**
+            - Language apps (Duolingo, Babbel)
+            - Local community college classes (2 hours/week)
+            - Spanish-speaking coworkers willing to practice
+            - Netflix shows with subtitles
+            - 30 minutes daily available for study
+            
+            **Constraints:**
+            - Busy work schedule
+            - Limited budget ($50/month)
+            - No immersion opportunities
+            
+            **Your Challenge:** Use metacognitive strategies to design an effective learning plan.
+            """
+        }
+    }
+    
+    return content_examples.get(category, {}).get(task["name"], "Complete this real-world application task.")
+
 def page_dashboard():
     page_header("Today")
     check_daily_reset()  # Ensure daily progress is reset if new day
@@ -2651,17 +3301,18 @@ def page_dashboard():
                 st.session_state["page"] = "Healthy Baseline"
                 st.rerun()
 
-    # Section 2: Spaced Learning (includes Review, Topic Study, World Model)
+    # Section 2: Spaced Learning (includes Review, Topic Study, World Model, Real-World Transfer)
     with col2:
         # Calculate spaced learning completion
         spaced_checks = {
             "review": completed.get("review", False),
             "topic_study": completed.get("topic_study", False),
             "world_model_a": completed.get("world_model_a", False),
-            "world_model_b": completed.get("world_model_b", False)
+            "world_model_b": completed.get("world_model_b", False),
+            "real_world_transfer": completed.get("real_world_transfer", False)
         }
         spaced_completed = sum(1 for v in spaced_checks.values() if v)
-        all_spaced_complete = spaced_completed == 4
+        all_spaced_complete = spaced_completed == 5
         
         st.markdown(f"""
         <div style="
@@ -2681,7 +3332,7 @@ def page_dashboard():
         ">
             <div style="font-size: 1.25rem; margin-bottom: 0.5rem; color: {'#22c55e' if all_spaced_complete else styles['muted_color']};">{'✓' if all_spaced_complete else '○'}</div>
             <div style="font-weight: 600; color: {styles['text_color']}; margin-bottom: 0.25rem; font-size: 1rem;">Spaced Learning</div>
-            <div style="font-size: 1.75rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{spaced_completed}/4</div>
+            <div style="font-size: 1.75rem; font-weight: 700; color: {styles['accent_color']}; margin-bottom: 0.5rem;">{spaced_completed}/5</div>
             <div style="color: {styles['muted_color']}; font-size: 0.8rem;">activities done</div>
         </div>
         """, unsafe_allow_html=True)
@@ -2761,6 +3412,23 @@ def page_dashboard():
             label = ("✅ " if wm_b_completed else "") + "World Model B"
             if st.button(label, key="spaced_wm_b", use_container_width=True):
                 st.session_state["page"] = "World Model"
+                st.rerun()
+            
+            # Real-World Transfer
+            rw_transfer_completed = completed.get("real_world_transfer", False)
+            
+            if rw_transfer_completed:
+                st.markdown("""
+                <style>
+                div[data-testid="stButton"] > button[key="spaced_rw_transfer"] {
+                    background: rgba(34, 197, 94, 0.5) !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+            
+            label = ("✅ " if rw_transfer_completed else "") + "Real-World Transfer"
+            if st.button(label, key="spaced_rw_transfer", use_container_width=True):
+                st.session_state["page"] = "Real-World Transfer"
                 st.rerun()
 
     # Section 3: Cognitive Drills
@@ -6722,7 +7390,8 @@ PAGES = [
     "Healthy Baseline",
     "SPACED LEARNING",
     "Spaced Review",
-    "World Model", 
+    "World Model",
+    "Real-World Transfer", 
     "Topic Study",
     "Card Management",
     "COGNITIVE DRILLS",
@@ -7787,6 +8456,7 @@ elif page == "Spaced Review": page_review()
 elif page == "Topic Study": page_topic_study()
 elif page == "Card Management": page_card_management()
 elif page == "World Model": page_world_model()
+elif page == "Real-World Transfer": page_real_world_transfer()
 elif page == "N-Back": page_nback()
 elif page == "Task Switching": page_task_switching()
 elif page == "Complex Span": page_complex_span()
