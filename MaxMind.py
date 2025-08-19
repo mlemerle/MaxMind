@@ -4786,36 +4786,51 @@ def page_complex_span():
                 composite = (recall_acc + proc_acc) / 2.0
                 avg_proc_rt = sum(cs["proc_rts"]) / len(cs["proc_rts"]) if cs["proc_rts"] else 0
                 
-                st.success(f"**Recall**: {correct_positions}/{cs['set_size']} correct ({recall_acc*100:.1f}%)")
-                st.success(f"🧮 **Math**: {cs['proc_correct']}/{cs['proc_total']} correct ({proc_acc*100:.1f}%)")
-                st.info(f"**Composite Score**: {composite*100:.1f}%")
-                st.caption(f"Average processing RT: {avg_proc_rt:.0f}ms")
+                # Store results and move to results phase
+                cs["results"] = {
+                    "guess": guess,
+                    "correct_positions": correct_positions,
+                    "recall_acc": recall_acc,
+                    "proc_acc": proc_acc,
+                    "composite": composite,
+                    "avg_proc_rt": avg_proc_rt
+                }
+                cs["phase"] = "results"
+                st.rerun()
+
+        elif cs["phase"] == "results":
+            # Display results
+            results = cs["results"]
+            st.success(f"**Recall**: {results['correct_positions']}/{cs['set_size']} correct ({results['recall_acc']*100:.1f}%)")
+            st.success(f"🧮 **Math**: {cs['proc_correct']}/{cs['proc_total']} correct ({results['proc_acc']*100:.1f}%)")
+            st.info(f"**Composite Score**: {results['composite']*100:.1f}%")
+            st.caption(f"Average processing RT: {results['avg_proc_rt']:.0f}ms")
+            
+            # Show correct sequence
+            st.markdown("**Correct sequence was:** " + " → ".join(cs["letters"]))
+            
+            # Strategy reflection
+            st.markdown("### 🤔 Strategy Reflection")
+            strategy_rating = st.slider(f"How well did '{cs['strategy']}' work for you?", 1, 5, 3, 
+                                      help="1=Not helpful, 5=Very helpful")
+            
+            if st.button("Complete Session & Save Results"):
+                # Adaptive update
+                level_idx = CSPAN_GRID.index(cs["set_size"])
+                adaptive_update("complex_span", level_idx, accuracy=results['composite'])
                 
-                # Show correct sequence
-                st.markdown("**Correct sequence was:** " + " → ".join(cs["letters"]))
+                # Mark Complex Span as completed
+                mark_completed("complex_span")
+                save_state()
                 
-                # Strategy reflection
-                st.markdown("### 🤔 Strategy Reflection")
-                strategy_rating = st.slider(f"How well did '{cs['strategy']}' work for you?", 1, 5, 3, 
-                                          help="1=Not helpful, 5=Very helpful")
+                # Strategy feedback
+                if strategy_rating >= 4:
+                    st.success(f"Great! '{cs['strategy']}' is working well for you.")
+                elif strategy_rating <= 2:
+                    st.info(f"'{cs['strategy']}' wasn't very helpful. Try a different strategy next time.")
                 
-                if st.button("Complete Session & Save Results"):
-                    # Adaptive update
-                    level_idx = CSPAN_GRID.index(cs["set_size"])
-                    adaptive_update("complex_span", level_idx, accuracy=composite)
-                    
-                    # Mark Complex Span as completed
-                    mark_completed("complex_span")
-                    save_state()
-                    
-                    # Strategy feedback
-                    if strategy_rating >= 4:
-                        st.success(f"Great! '{cs['strategy']}' is working well for you.")
-                    elif strategy_rating <= 2:
-                        st.info(f"'{cs['strategy']}' wasn't very helpful. Try a different strategy next time.")
-                    
-                    st.session_state["cspan"] = None
-                    st.rerun()
+                st.session_state["cspan"] = None
+                st.rerun()
 
     # Academic Research References
     st.markdown("---")
