@@ -2385,8 +2385,8 @@ def page_dashboard():
     # Progress bar styling
     if progress_pct == 100:
         progress_gradient = "linear-gradient(90deg, #FFD700 0%, #FFA500 50%, #FFD700 100%)"
-        progress_text_color = "#000000"
-        progress_celebration = "PERFECT DAY"
+        progress_text_color = styles['text_color']  # Use theme-appropriate text color
+        progress_celebration = "🎉 PERFECT DAY! 100% COMPLETE! 🎉"
     else:
         progress_gradient = "linear-gradient(90deg, #58a6ff 0%, #238636 100%)" if S().get("settings", {}).get("darkMode", False) else "linear-gradient(90deg, #007aff 0%, #00d4ff 100%)"
         progress_text_color = styles['text_color']
@@ -2423,7 +2423,7 @@ def page_dashboard():
                 box-shadow: {'0 0 8px rgba(255, 215, 0, 0.4)' if progress_pct == 100 else 'none'};
             "></div>
         </div>
-        <div style="color: {progress_text_color}; font-size: 0.85rem; text-align: center; font-weight: {'bold' if progress_pct == 100 else 'normal'};">{progress_pct}% Complete</div>
+        <div style="color: {progress_text_color}; font-size: {'1.1rem' if progress_pct == 100 else '0.85rem'}; text-align: center; font-weight: {'bold' if progress_pct == 100 else 'normal'}; text-shadow: {'1px 1px 2px rgba(0,0,0,0.5)' if progress_pct == 100 else 'none'};">{'🏆 ' if progress_pct == 100 else ''}{progress_pct}% Complete{'! 🏆' if progress_pct == 100 else ''}</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -5770,6 +5770,24 @@ def get_daily_content(content_type="crt"):
                 "intuitive_answer": "24 days",
                 "correct_answer": "47 days",
                 "explanation": "If the patch doubles every day and covers the entire lake on day 48, it must have covered half the lake on day 47."
+            },
+            {
+                "question": "A widget costs $1.50. A discount reduces the price by 20%, then tax of 20% is added. What is the final price?",
+                "intuitive_answer": "$1.50",
+                "correct_answer": "$1.44", 
+                "explanation": "First discount: $1.50 × 0.8 = $1.20. Then tax: $1.20 × 1.2 = $1.44. The operations don't cancel out due to different base amounts."
+            },
+            {
+                "question": "A car travels 60 miles in 1 hour, then 60 miles in 2 hours. What is the average speed for the entire trip?",
+                "intuitive_answer": "45 mph",
+                "correct_answer": "40 mph",
+                "explanation": "Total distance: 120 miles. Total time: 3 hours. Average speed = 120 ÷ 3 = 40 mph. You can't just average the speeds."
+            },
+            {
+                "question": "A bookworm starts at page 1 of Volume 1 and eats through to page 1000 of Volume 3. If each volume has 1000 pages and 1-inch covers, how many inches does it eat through?",
+                "intuitive_answer": "3002 inches",
+                "correct_answer": "3000 inches",
+                "explanation": "The bookworm doesn't eat through the front cover of Volume 1 or back cover of Volume 3, only through pages and intermediate covers."
             }
         ],
         "base_rate": [
@@ -5825,7 +5843,6 @@ def get_daily_content(content_type="crt"):
 def page_crt():
     page_header("Cognitive Reflection Test")
     st.caption("Tests the ability to override intuitive but incorrect responses. Measures System 2 thinking.")
-    st.success("🎯 CRT page loaded successfully!")  # Debug line
     
     if "crt" not in st.session_state:
         st.session_state["crt"] = {
@@ -5842,9 +5859,7 @@ def page_crt():
     if not crt["question"]:
         try:
             crt["question"] = get_daily_content("crt")
-            st.info("✅ Question loaded successfully")
         except Exception as e:
-            st.error(f"Error loading question: {e}")
             # Fallback to manual question
             crt["question"] = {
                 "question": "A bat and ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost?",
@@ -5854,8 +5869,6 @@ def page_crt():
             }
     
     question_data = crt["question"]
-    st.write(f"Debug: Question data type: {type(question_data)}")
-    st.write(f"Debug: Question data: {question_data}")
     
     with st.expander("Understanding CRT", expanded=False):
         st.markdown("""
@@ -5880,9 +5893,18 @@ def page_crt():
                 crt["attempts"] += 1
                 crt["completed"] = True
                 
-                # Check if answer is correct
-                correct = user_answer.strip().lower() == question_data["correct_answer"].lower()
-                intuitive = user_answer.strip().lower() == question_data["intuitive_answer"].lower()
+                # Check if answer is correct using flexible parsing
+                user_parsed = parse_number_flexible(user_answer.strip())
+                correct_parsed = parse_number_flexible(question_data["correct_answer"])
+                intuitive_parsed = parse_number_flexible(question_data["intuitive_answer"])
+                
+                # Also check string matches for non-numeric answers
+                user_clean = user_answer.strip().lower()
+                correct_clean = question_data["correct_answer"].lower()
+                intuitive_clean = question_data["intuitive_answer"].lower()
+                
+                correct = (user_parsed is not None and correct_parsed is not None and abs(user_parsed - correct_parsed) < 0.001) or user_clean == correct_clean
+                intuitive = (user_parsed is not None and intuitive_parsed is not None and abs(user_parsed - intuitive_parsed) < 0.001) or user_clean == intuitive_clean
                 
                 # Record performance
                 elapsed_time = time.time() - crt["start_time"]
@@ -5909,8 +5931,17 @@ def page_crt():
     
     else:
         # Show results
-        correct = crt["user_answer"].lower() == question_data["correct_answer"].lower()
-        intuitive = crt["user_answer"].lower() == question_data["intuitive_answer"].lower()
+        user_parsed = parse_number_flexible(crt["user_answer"])
+        correct_parsed = parse_number_flexible(question_data["correct_answer"])
+        intuitive_parsed = parse_number_flexible(question_data["intuitive_answer"])
+        
+        # Also check string matches for non-numeric answers
+        user_clean = crt["user_answer"].lower()
+        correct_clean = question_data["correct_answer"].lower()
+        intuitive_clean = question_data["intuitive_answer"].lower()
+        
+        correct = (user_parsed is not None and correct_parsed is not None and abs(user_parsed - correct_parsed) < 0.001) or user_clean == correct_clean
+        intuitive = (user_parsed is not None and intuitive_parsed is not None and abs(user_parsed - intuitive_parsed) < 0.001) or user_clean == intuitive_clean
         
         st.markdown("### Results")
         
