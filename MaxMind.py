@@ -3,139 +3,58 @@
 # Deps: pip install streamlit graphviz matplotlib
 
 from __future__ import annotations
-import json, math, random, time, uuid
-from dataclasses import dataclass, asdict, field
-from datetime import date, datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple
-
+import json, math, random, time, uuid, os
+from dataclasses import dataclass, field, asdict
+from typing import Any, Optional, Dict, List, Tuple
+from datetime import date, timedelta
 import streamlit as st
-import numpy as np
-from graphviz import Digraph
-import matplotlib.pyplot as plt
+import streamlit.components.v1 as components
 
-# AI Integration for Streamlit Cloud
-def get_ai_api_key():
-    """Get AI API key from Streamlit secrets or user input"""
+# Optional deps used later; import safely
+try:
+    import matplotlib.pyplot as plt  # type: ignore
+except Exception:
+    plt = None  # type: ignore
+
+try:
+    from graphviz import Digraph  # type: ignore
+except Exception:
+    Digraph = None  # type: ignore
+
+
+# ---- Minimal AI helpers (safe fallbacks) ----
+def get_ai_api_key() -> Optional[str]:
     try:
-        # First, try to get from Streamlit secrets (for admin-controlled deployment)
-        if "openai" in st.secrets:
-            return st.secrets["openai"]["api_key"]
-        elif "ai" in st.secrets:
-            return st.secrets["ai"]["openai_api_key"]
-    except:
+        key = st.secrets.get("OPENAI_API_KEY")  # type: ignore[attr-defined]
+    except Exception:
+        key = None
+    if not key:
+        key = os.environ.get("OPENAI_API_KEY")
+    try:
+        if not key and "settings" in S():
+            key = S()["settings"].get("apiKey")
+    except Exception:
         pass
-    
-    # If no secrets, get from user input (for user-controlled deployment)
-    return st.session_state.get("user_api_key", None)
+    return key
+
+
+def generate_ai_content(prompt: str) -> str:
+    # Lightweight fallback to keep app functional without external API
+    return (
+        "AI generation is disabled. Fallback content based on your prompt:\n\n"
+        + prompt.strip()[:500]
+    )
+
 
 def setup_ai_configuration():
-    """Setup AI configuration in sidebar with persistent browser storage"""
-    with st.sidebar:
-        with st.expander("AI Configuration", expanded=False):
-            st.markdown("### AI Content Generation")
-            
-            # Always show user input option
-            st.markdown("**Enter your OpenAI API key:**")
-            st.caption("Stored securely in your browser only")
-            
-            api_key = st.text_input(
-                "API Key", 
-                value=st.session_state.get("user_api_key", ""),
-                type="password",
-                placeholder="sk-...",
-                help="Your key is saved in browser storage - no need to re-enter each visit"
-            )
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Save API Key"):
-                    if api_key.startswith("sk-"):
-                        st.session_state["user_api_key"] = api_key
-                        # Save to browser localStorage
-                        st.markdown(f"""
-                        <script>
-                        localStorage.setItem('maxmind_openai_key', '{api_key}');
-                        </script>
-                        """, unsafe_allow_html=True)
-                        st.success("API key saved!")
-                        st.rerun()
-                    else:
-                        st.error("Please enter a valid OpenAI API key")
-            
-            with col2:
-                # Clear API key option
-                if st.session_state.get("user_api_key"):
-                    if st.button("Clear Key"):
-                        st.session_state.pop("user_api_key", None)
-                        st.markdown("""
-                        <script>
-                        localStorage.removeItem('maxmind_openai_key');
-                        </script>
-                        """, unsafe_allow_html=True)
-                        st.warning("API key cleared")
-                        st.rerun()
-            
-            # Show status
-            if get_ai_api_key():
-                st.success("AI content generation is enabled!")
-                st.info("Ready to generate Topic Study content")
-                return True
-            else:
-                st.warning("Enter API key to enable AI features")
-                st.info("Get your key from https://platform.openai.com/api-keys")
-                return False
-
-def generate_ai_content(prompt: str):
-    """Generate AI content using OpenAI with error handling"""
-    api_key = get_ai_api_key()
-    if not api_key:
-        return "AI content requires API key configuration."
-    
-    try:
-        import openai
-        client = openai.OpenAI(api_key=api_key)
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an educational content generator. Create engaging, informative content suitable for adult learners."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=500,
-            temperature=0.7
-        )
-        
-        return response.choices[0].message.content.strip()
-        
-    except Exception as e:
-        error_msg = str(e)
-        if "quota" in error_msg.lower() or "insufficient" in error_msg.lower():
-            return f"""**API Quota Exceeded**
-
-Unfortunately, the OpenAI API quota has been exceeded. Here's a fallback topic for today:
-
-**Topic**: {generate_fallback_topic_content()}
-
-*Note: Add your own OpenAI API key in the sidebar to enable AI-generated content, or continue with the manual topic selection.*"""
-        else:
-            return f"AI generation error: {error_msg}"
-
-def generate_fallback_topic_content():
-    """Generate fallback content when AI is unavailable"""
-    fallback_topics = [
-        "The Philosophy of Scientific Progress - How do we determine when one scientific theory is better than another?",
-        "Cognitive Biases in Decision Making - Why do intelligent people make predictably irrational choices?", 
-        "The Network Effects of Technology - How do platforms become dominant and what are the implications?",
-        "Emergence in Complex Systems - How do simple rules create complex behaviors in nature and society?",
-        "The Psychology of Expertise - What separates true experts from novices in any field?",
-        "Economic Incentives and Human Behavior - How do market structures shape individual and collective actions?",
-        "The History of Ideas - How do intellectual movements spread and transform societies?",
-        "Metacognition and Learning - How can we improve our ability to learn and think about thinking?",
-        "Political Economy and Institutional Design - Why do some institutions succeed while others fail?",
-        "The Epistemology of Knowledge - How do we know what we know, and what are the limits of human understanding?"
-    ]
-    
-    return random.choice(fallback_topics)
+    # Non-blocking placeholder to avoid NameError if referenced
+    if "settings" not in st.session_state:
+        st.session_state["settings"] = {}
+    # Try to load key from env once
+    if not st.session_state["settings"].get("apiKey"):
+        env_key = os.environ.get("OPENAI_API_KEY")
+        if env_key:
+            st.session_state["settings"]["apiKey"] = env_key
 
 def generate_category_topic(category: str):
     """Generate AI-powered topic for Topic Study page"""
@@ -1250,6 +1169,31 @@ def adaptive_update(drill: str, level_idx: int, accuracy: float):
     a[drill]["sessions_today"] += 1
     save_state()
 
+def get_skill_rating(drill: str) -> float:
+    """Get current skill rating for a specific drill"""
+    return S()["adaptive"][drill]["skill"]
+
+def get_recent_win_rate(drill: str) -> float:
+    """Get recent win rate percentage for a drill"""
+    a = S()["adaptive"]
+    recent = a[drill]["recent_scores"]
+    
+    if len(recent) == 0:
+        return 0.0
+    
+    # Convert to percentage
+    return (sum(recent) / len(recent)) * 100
+
+def record_session_result(drill: str, accuracy: float, level_achieved: int = 0):
+    """Record the result of a training session"""
+    # Update adaptive system
+    adaptive_update(drill, level_achieved, accuracy)
+    
+    # Mark activity as completed
+    mark_completed(drill)
+    
+    save_state()
+
 def get_performance_feedback(drill: str) -> str:
     """Generate adaptive feedback and suggestions"""
     a = S()["adaptive"]
@@ -2311,6 +2255,8 @@ def page_dashboard():
     # Get completion status
     completed = get_completion_status()
     
+    # (Removed debug panel)
+    
     # Daily Progress Bar at the top
     total_activities = len(completed)
     completed_count = sum(completed.values())
@@ -2485,21 +2431,70 @@ def page_dashboard():
             
             # Review (with cards due count)
             dc = len(due_cards(S()))
-            if st.button(f"Spaced Review ({dc} cards)", key="spaced_review", use_container_width=True):
+            review_completed = completed.get("review", False)
+            
+            if review_completed:
+                st.markdown("""
+                <style>
+                div[data-testid="stButton"] > button[key="spaced_review"] {
+                    background: rgba(34, 197, 94, 0.5) !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+            
+            label = ("✅ " if review_completed else "") + f"Spaced Review ({dc} cards)"
+            if st.button(label, key="spaced_review", use_container_width=True):
                 st.session_state["page"] = "Spaced Review"
                 st.rerun()
             
             # Topic Study
-            if st.button("Topic Study", key="spaced_topic", use_container_width=True):
+            topic_completed = completed.get("topic_study", False)
+            
+            if topic_completed:
+                st.markdown("""
+                <style>
+                div[data-testid="stButton"] > button[key="spaced_topic"] {
+                    background: rgba(34, 197, 94, 0.5) !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+            
+            label = ("✅ " if topic_completed else "") + "Topic Study"
+            if st.button(label, key="spaced_topic", use_container_width=True):
                 st.session_state["page"] = "Topic Study"
                 st.rerun()
             
-            # World Model A & B
-            if st.button("World Model A", key="spaced_wm_a", use_container_width=True):
+            # World Model A
+            wm_a_completed = completed.get("world_model_a", False)
+            
+            if wm_a_completed:
+                st.markdown("""
+                <style>
+                div[data-testid="stButton"] > button[key="spaced_wm_a"] {
+                    background: rgba(34, 197, 94, 0.5) !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+            
+            label = ("✅ " if wm_a_completed else "") + "World Model A"
+            if st.button(label, key="spaced_wm_a", use_container_width=True):
                 st.session_state["page"] = "World Model"
                 st.rerun()
             
-            if st.button("World Model B", key="spaced_wm_b", use_container_width=True):
+            # World Model B
+            wm_b_completed = completed.get("world_model_b", False)
+            
+            if wm_b_completed:
+                st.markdown("""
+                <style>
+                div[data-testid="stButton"] > button[key="spaced_wm_b"] {
+                    background: rgba(34, 197, 94, 0.5) !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+            
+            label = ("✅ " if wm_b_completed else "") + "World Model B"
+            if st.button(label, key="spaced_wm_b", use_container_width=True):
                 st.session_state["page"] = "World Model"
                 st.rerun()
 
@@ -2552,7 +2547,37 @@ def page_dashboard():
             ]
             
             for name, page, key in drill_activities:
-                if st.button(f"{name}", key=f"drill_{key}", use_container_width=True):
+                drill_completed = completed.get(key, False)
+                
+                # More specific CSS targeting with higher specificity
+                if drill_completed:
+                    st.markdown(f"""
+                    <style>
+                    /* High specificity CSS for completed drill button */
+                    div[data-testid="stButton"] > button[key="drill_{key}"] {{
+                        background: rgba(34, 197, 94, 0.5) !important;
+                        border: 2px solid rgba(34, 197, 94, 0.8) !important;
+                        box-shadow: 0 0 10px rgba(34, 197, 94, 0.3) !important;
+                    }}
+                    
+                    /* Alternative targeting in case the above doesn't work */
+                    button[data-testid*="drill_{key}"] {{
+                        background: rgba(34, 197, 94, 0.5) !important;
+                        border: 2px solid rgba(34, 197, 94, 0.8) !important;
+                    }}
+                    
+                    /* General completed button styling */
+                    .completed-drill-{key} {{
+                        background: rgba(34, 197, 94, 0.5) !important;
+                        border: 2px solid rgba(34, 197, 94, 0.8) !important;
+                    }}
+                    </style>
+                    """, unsafe_allow_html=True)
+                
+                # Add visual indicator in button text for completed items
+                button_text = f"✅ {name}" if drill_completed else name
+                
+                if st.button(button_text, key=f"drill_{key}", use_container_width=True):
                     st.session_state["page"] = page
                     st.rerun()
 
@@ -2606,6 +2631,17 @@ def page_dashboard():
             ]
             
             for name, page, key in additional_activities:
+                activity_completed = completed.get(key, False)
+                
+                if activity_completed:
+                    st.markdown(f"""
+                    <style>
+                    div[data-testid="stButton"] > button[key="additional_{key}"] {{
+                        background: rgba(34, 197, 94, 0.5) !important;
+                    }}
+                    </style>
+                    """, unsafe_allow_html=True)
+                
                 if st.button(f"{name}", key=f"additional_{key}", use_container_width=True):
                     st.session_state["page"] = page
                     st.rerun()
@@ -3565,420 +3601,358 @@ def handle_grade(card: Dict[str, Any], q: int):
 
 # ----- Professional Dual N-Back Implementation -----
 def page_nback():
-    page_header("Visual N-Back (Simple & Working)")
-    st.caption("Track **visual positions** in a 3x3 grid. Click **Visual Match** when current position matches N steps back.")
+    """Dual N-Back page – in-browser implementation with visual grid and spoken letters."""
+    page_header("Dual N-Back")
+    st.caption("Runs entirely in your browser. Uses Web Speech for audio letters; no local files needed.")
 
-    # Instructions
-    with st.expander("How to Play Visual N-Back", expanded=False):
-        st.markdown("""
-        **Visual N-Back trains working memory through pattern recognition:**
-        
-        **Visual Task**: Watch for squares flashing in the 3×3 grid  
-        
-        **Your Goal**: For each trial, determine if:
-        - The **current visual position** matches the position from N trials ago
-        
-        **Controls**:
-        - Click **Visual Match** when the current position matches the position from N steps back
-        - Do nothing if it doesn't match
-        
-        **Tips**:
-        - Start with N=2 and increase difficulty gradually
-        - Use mental rehearsal: remember the sequence of positions
-        - Accuracy is more important than speed
-        - Focus on the pattern of positions over time
-        """)
-
-    # Adaptive Suggestions
-    adaptive_idx = adaptive_suggest_index("nback")
-    suggested_n, suggested_interval_ms = NBACK_GRID[adaptive_idx]
-    suggested_speed = "Expert (1.5s)" if suggested_interval_ms <= 900 else "Fast (2s)" if suggested_interval_ms <= 1200 else "Medium (2.5s)" if suggested_interval_ms <= 1500 else "Slow (3s)"
-    
-    feedback = get_performance_feedback("nback")
-    if feedback:
-        st.info(f"🎯 **Adaptive Suggestion**: N={suggested_n}, Speed={suggested_speed} | {feedback}")
-
-    # Settings
-    col1, col2, col3 = st.columns(3)
+    # Config controls
+    col1, col2, col3, col4 = st.columns([1,1,1,1])
     with col1:
-        n = st.selectbox("N-Back Level", [1, 2, 3, 4], index=1, help="Memory span - how many steps back to remember")
+        mode = st.selectbox("Mode", ["Dual (Both)", "Visual Only", "Audio Only"], index=0)
     with col2:
-        trials = st.selectbox("Number of Trials", [15, 20, 25, 30], index=1)
+        n_val = st.selectbox("N", [1, 2, 3, 4, 5], index=1)
     with col3:
-        speed = st.selectbox("Speed", ["Slow (3s)", "Medium (2.5s)", "Fast (2s)", "Expert (1.5s)"], index=1)
-    
-    # Convert speed to interval
-    speed_map = {"Slow (3s)": 3.0, "Medium (2.5s)": 2.5, "Fast (2s)": 2.0, "Expert (1.5s)": 1.5}
-    interval = speed_map[speed]
+        trials = st.selectbox("Trials", [20, 30, 40], index=0)
+    with col4:
+        speed = st.selectbox("Speed", ["Slow", "Medium", "Fast"], index=1)
 
-    # Initialize session state
-    if "dual_nback" not in st.session_state:
-        st.session_state["dual_nback"] = None
+    interval = {"Slow": 2.0, "Medium": 1.5, "Fast": 1.0}[speed]
 
-    # Start button
-    if st.button("Start Visual N-Back Session", type="primary", use_container_width=True):
-        # Generate sequences
-        positions = [random.randint(0, 8) for _ in range(trials)]  # 3x3 grid positions (0-8)
-        
-        # Determine target trials (visual only)
-        visual_targets = set()
-        
-        for i in range(n, trials):
-            if positions[i] == positions[i - n]:
-                visual_targets.add(i)
-        
-        # Initialize session
-        st.session_state["dual_nback"] = {
-            "n": n, "trials": trials, "interval": interval,
-            "positions": positions,
-            "visual_targets": visual_targets,
-            "current_trial": 0, "visual_responses": set(),
-            "session_start": time.time(), "trial_start": None,
-            "status": "running", "results": None
-        }
+    # Session state
+    if "dnb" not in st.session_state:
+        st.session_state["dnb"] = None
+
+    # Reserve stable placeholders so UI stays static between trials
+    st.markdown("#### Status")
+    if "dnb_status_text_ph" not in st.session_state:
+        st.session_state["dnb_status_text_ph"] = st.empty()
+    if "dnb_status_prog_ph" not in st.session_state:
+        st.session_state["dnb_status_prog_ph"] = st.empty()
+    st.markdown("#### Stimulus")
+    if "dnb_grid_ph" not in st.session_state:
+        st.session_state["dnb_grid_ph"] = st.empty()
+    if "dnb_controls_ph" not in st.session_state:
+        st.session_state["dnb_controls_ph"] = st.empty()
+
+    # Audio test
+    with st.expander("Audio test / Troubleshoot", expanded=False):
+        if st.button("Test Audio (says 'A')"):
+            components.html("""
+            <script>
+            const u = new SpeechSynthesisUtterance('A');
+            u.rate = 1.0; u.pitch = 1.0; u.lang = 'en-US';
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(u);
+            </script>
+            """, height=0)
+        st.caption("If you don't hear audio, unmute your tab or allow autoplay for this site.")
+
+    # Start session
+    if st.session_state["dnb"] is None:
+        if st.button("Start Session", type="primary", use_container_width=True):
+            _dnb_start_session(n_val, trials, interval, mode)
+            st.rerun()
+    else:
+        # Inject keyboard shortcuts once per session
+        if not st.session_state.get("dnb_keys_injected"):
+            components.html("""
+            <script>
+            (function(){
+                const root = window.parent.document;
+                function clickByText(txt){
+                    const btns = root.querySelectorAll('button');
+                    for(const b of btns){
+                        if((b.innerText||'').trim().toLowerCase() === txt){ b.click(); return; }
+                    }
+                }
+                function onKey(e){
+                    if(e.key === '1'){ clickByText('visual match'); }
+                    if(e.key === '2'){ clickByText('audio match'); }
+                }
+                root.addEventListener('keydown', onKey, {passive:true});
+            })();
+            </script>
+            """, height=0)
+            st.session_state["dnb_keys_injected"] = True
+        # Hidden next-trial button (clicked by JS at end of each interval)
+        next_clicked = st.button("⏭", key="dnb_next", help="internal")
+        # Hide the hidden button in the outer DOM
+        components.html("""
+        <script>
+        (function(){
+            const root = window.parent.document;
+            function hide(){
+                const btns = root.querySelectorAll('button');
+                for(const b of btns){ if((b.innerText||'').trim()==='⏭'){ b.style.display='none'; } }
+            }
+            hide(); setInterval(hide, 1000);
+        })();
+        </script>
+        """, height=0)
+        _dnb_run_ui(next_clicked)
+
+
+def _dnb_start_session(n: int, trials: int, interval: float, mode: str):
+    letters = list("CHK LQRST".replace(" ", ""))  # 8 letters
+    pos_seq = [random.randint(0, 8) for _ in range(trials)]
+    let_seq = [random.choice(letters) for _ in range(trials)]
+
+    # Targets
+    visual_targets = {i for i in range(n, trials) if pos_seq[i] == pos_seq[i-n]}
+    audio_targets = {i for i in range(n, trials) if let_seq[i] == let_seq[i-n]}
+
+    st.session_state["dnb"] = {
+        "n": n,
+        "trials": trials,
+        "interval": interval,
+        "mode": mode,
+        "positions": pos_seq,
+        "letters": let_seq,
+        "visual_targets": visual_targets,
+        "audio_targets": audio_targets,
+        "current": 0,
+        "trial_start": None,
+        "paused": False,
+        "visual_responses": set(),
+        "audio_responses": set(),
+        "last_spoken": -1,
+        "done": False,
+        "results": None,
+    }
+
+
+def _dnb_run_ui(next_clicked: bool = False):
+    d = st.session_state["dnb"]
+    mode = d["mode"]
+
+    # Header / status
+    st.info(f"N={d['n']} • Trials {d['trials']} • Interval {d['interval']}s • Mode: {mode}")
+
+    # Ensure timer baseline exists and schedule an auto-advance via hidden button
+    if not d["paused"] and not d["done"] and d["trial_start"] is None:
+        d["trial_start"] = time.time()
+        # Schedule a single click after the interval to advance the trial
+        ms = int(max(0.0, d["interval"]) * 1000)
+        components.html(f"""
+        <script>
+        (function(){{
+            const root = window.parent.document;
+            function advance(){{
+                const btns = root.querySelectorAll('button');
+                for(const b of btns){{ if((b.innerText||'').trim()==='⏭'){{ b.click(); return; }} }}
+            }}
+            setTimeout(advance, {ms});
+        }})();
+        </script>
+        """, height=0)
+
+    # Display grid + letter
+    if not d["done"]:
+        cur = d["current"]
+        # Guard against out-of-range during boundary transitions
+        if cur >= d["trials"]:
+            d["done"] = True
+            d["results"] = _dnb_score(d)
+            st.rerun()
+        pos = d["positions"][cur]
+        # Determine letter text for visibility if audio mode is in play
+        letter_txt = d["letters"][cur] if mode in ("Audio Only", "Dual (Both)") else None
+
+        # Update status (above grid): trial counter + countdown + progress
+        status_text_ph = st.session_state["dnb_status_text_ph"]
+        status_prog_ph = st.session_state["dnb_status_prog_ph"]
+        if not d["paused"]:
+            status_text_ph.markdown(f"**Trial {d['current']+1}/{d['trials']}** — Next trial soon")
+            # CSS-animated progress bar that takes interval seconds, avoids Python-side reruns
+            dur = max(0.01, float(d["interval"]))
+            status_prog_ph.markdown(f"""
+            <div style='height:10px;background:#2a2a2a;border-radius:6px;overflow:hidden'>
+                <div style=\"height:100%;width:0;background:#2e7df6;animation: dnbprog {dur}s linear forwards\"></div>
+            </div>
+            <style>@keyframes dnbprog{{from{{width:0}} to{{width:100%}}}}</style>
+            """, unsafe_allow_html=True)
+        else:
+            status_text_ph.markdown(f"**Paused** — Trial {d['current']+1}/{d['trials']}")
+            status_prog_ph.markdown("<div style='height:10px;background:#2a2a2a;border-radius:6px'></div>", unsafe_allow_html=True)
+
+        # Render the grid in its placeholder
+        _render_dnb_grid(pos, st.session_state.get("dnb_grid_ph"), letter_txt)
+
+        # Speak letter for audio modes
+        if mode in ("Audio Only", "Dual (Both)") and d["last_spoken"] != cur:
+            letter = d["letters"][cur]
+            components.html(f"""
+            <script>
+            const u = new SpeechSynthesisUtterance('{letter}');
+            u.rate = 1.0; u.pitch = 1.0; u.lang = 'en-US';
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(u);
+            </script>
+            """, height=0)
+            d["last_spoken"] = cur
+
+        # Controls (rendered into a single, cleared placeholder each tick)
+        controls_ph = st.session_state["dnb_controls_ph"]
+        controls_ph.empty()
+        with controls_ph.container():
+            rc1, rc2, rc3 = st.columns(3)
+            with rc1:
+                if mode in ("Visual Only", "Dual (Both)"):
+                    if st.button("Visual Match", key="dnb_visual", use_container_width=True):
+                        d["visual_responses"].add(d["current"])
+            with rc2:
+                if mode in ("Audio Only", "Dual (Both)"):
+                    if st.button("Audio Match", key="dnb_audio", use_container_width=True):
+                        d["audio_responses"].add(d["current"])
+            with rc3:
+                if st.button("Skip", key="dnb_skip", use_container_width=True):
+                    d["current"] = min(d["trials"], d["current"] + 1)
+                    d["trial_start"] = None
+                    if d["current"] >= d["trials"]:
+                        d["done"] = True
+                        d["results"] = _dnb_score(d)
+                    st.rerun()
+
+            c1, c2 = st.columns(2)
+            with c1:
+                if not d["paused"]:
+                    if st.button("Pause", key="dnb_pause", use_container_width=True):
+                        d["paused"] = True
+                        st.rerun()
+                else:
+                    if st.button("Resume", key="dnb_resume", type="primary", use_container_width=True):
+                        d["trial_start"] = time.time()
+                        d["paused"] = False
+                        st.rerun()
+            with c2:
+                if st.button("Restart", key="dnb_restart", use_container_width=True):
+                    st.session_state["dnb"] = None
+                    st.rerun()
+    else:
+        # Done – show results and record
+        res = d["results"]
+        st.success("Session complete!")
+        st.json(res)
+        acc = res.get("overall_accuracy", 0.75)
+        n_level = d.get("n", 2)
+        record_session_result("nback", acc, level_achieved=n_level)
+        mark_completed("nback")
+        save_state()
+        if st.button("Start New Session", use_container_width=True):
+            st.session_state["dnb"] = None
+            st.rerun()
+
+    # Advance on hidden button click (one rerun per trial)
+    if next_clicked and not d["paused"] and not d["done"]:
+        d["current"] += 1
+        d["trial_start"] = None
+        if d["current"] >= d["trials"]:
+            d["done"] = True
+            d["results"] = _dnb_score(d)
         st.rerun()
 
-    # Main game interface
-    dnb = st.session_state.get("dual_nback")
-    if dnb and dnb["status"] == "running":
-        # Progress bar
-        progress = dnb["current_trial"] / dnb["trials"]
-        st.progress(progress, text=f"Trial {dnb['current_trial'] + 1} of {dnb['trials']} • N={dnb['n']} • {speed}")
-        
-        # Current trial display
-        if dnb["current_trial"] < dnb["trials"]:
-            current_pos = dnb["positions"][dnb["current_trial"]]
-            
-            # Visual display
-            col1, col2 = st.columns([3, 1])
-            
-            with col1:
-                st.markdown("### Visual Grid")
-                _render_dual_nback_grid(current_pos)
-                
-            with col2:
-                st.markdown("### Response Control")
-                st.info("Click when the current position matches the position from N trials ago")
-                
-                if st.button("Visual Match", key="visual_btn", use_container_width=True, type="primary"):
-                    dnb["visual_responses"].add(dnb["current_trial"])
-                    st.success("Match recorded!")
-                    time.sleep(0.3)
-            
-            # Trial info and timing
-            if dnb["current_trial"] >= dnb["n"]:
-                with st.expander("N-Back Reference (for learning)", expanded=False):
-                    past_pos = dnb["positions"][dnb["current_trial"] - dnb["n"]] + 1
-                    is_visual_target = dnb["current_trial"] in dnb["visual_targets"]
-                    status = "TARGET" if is_visual_target else "No match"
-                    st.caption(f"Visual N-back: Position {past_pos} {status}")
-            
-            # Simplified timing display
-            is_paused = dnb.get("paused", False)
-            
-            if not is_paused:
-                if dnb["trial_start"] is None:
-                    dnb["trial_start"] = time.time()
-                
-                elapsed = time.time() - dnb["trial_start"]
-                remaining = max(0, dnb["interval"] - elapsed)
-                
-                # Progress bar for trial timing
-                progress_pct = min(1.0, elapsed / dnb["interval"])
-                st.progress(progress_pct, text=f"Trial {dnb['current_trial'] + 1} - Next in: {remaining:.1f}s")
-                
-                # Auto-advance when time is up
-                if remaining <= 0:
-                    dnb["current_trial"] += 1
-                    dnb["trial_start"] = None
-                    
-                    if dnb["current_trial"] >= dnb["trials"]:
-                        dnb["status"] = "completed"
-                        dnb["results"] = _calculate_dual_nback_results(dnb)
-                    
-                    st.rerun()
-                
-                # Auto-refresh every second for smooth timer
-                if remaining > 0:
-                    time.sleep(1.0)
-                    st.rerun()
-            else:
-                # Show paused state
-                st.progress(0.0, text="Session Paused - Click Resume to continue")
-        
-        # Enhanced session controls
-        st.markdown("### Session Controls")
-        control_col1, control_col2, control_col3 = st.columns(3)
-        
-        # Check if session is paused
-        is_paused = dnb.get("paused", False)
-        
-        with control_col1:
-            if is_paused:
-                if st.button("Resume", key="resume_session", help="Resume the paused session", use_container_width=True, type="primary"):
-                    dnb["paused"] = False
-                    dnb["trial_start"] = time.time()  # Reset trial timer
-                    st.rerun()
-            else:
-                if st.button("Pause", key="pause_session", help="Pause the current session", use_container_width=True):
-                    dnb["paused"] = True
-                    dnb["trial_start"] = None
-                    st.rerun()
-        
-        with control_col2:
-            if st.button("Skip Trial", key="manual_next", help="Skip the timer and go to next trial", use_container_width=True):
-                dnb["current_trial"] += 1
-                dnb["trial_start"] = None
-                dnb["paused"] = False  # Unpause if skipping
-                if dnb["current_trial"] >= dnb["trials"]:
-                    dnb["status"] = "completed"
-                    dnb["results"] = _calculate_dual_nback_results(dnb)
-                st.rerun()
-        
-        with control_col3:
-            if st.button("Restart", key="restart_session", help="Start a new session", use_container_width=True):
-                st.session_state["dual_nback"] = None
-                st.rerun()
-        
-        # Show pause status
-        if is_paused:
-            st.warning("Session is paused. Click 'Resume' to continue or 'Skip Trial' to advance.")
 
-    # Results display
-    elif dnb and dnb["status"] == "completed":
-        _display_dual_nback_results(dnb)
+def _dnb_score(d: Dict[str, Any]) -> Dict[str, Any]:
+    trials = d["trials"]
+    mode = d["mode"]
+    vis_t = d["visual_targets"]
+    aud_t = d["audio_targets"]
+    vis_r = d["visual_responses"]
+    aud_r = d["audio_responses"]
 
-def _render_dual_nback_grid(highlighted_pos):
-    """Render 3x3 grid with highlighted position using CSS styling for visual clarity"""
-    
-    # CSS for proper grid styling
+    def score(targets: set, responses: set) -> Dict[str, Any]:
+        hits = len(targets & responses)
+        misses = len(targets - responses)
+        false = len(responses - targets)
+        denom = max(1, len(targets))
+        acc = hits / denom  # simple hit rate
+        return {"hits": hits, "misses": misses, "false_alarms": false, "targets": len(targets), "accuracy": acc}
+
+    vis_res = score(vis_t, vis_r) if mode in ("Visual Only", "Dual (Both)") else None
+    aud_res = score(aud_t, aud_r) if mode in ("Audio Only", "Dual (Both)") else None
+
+    accs = []
+    if vis_res: accs.append(vis_res["accuracy"])
+    if aud_res: accs.append(aud_res["accuracy"])
+    overall = float(sum(accs) / max(1, len(accs))) if accs else 0.75
+    return {
+        "mode": mode,
+        "n": d["n"],
+        "trials": trials,
+        "visual": vis_res,
+        "audio": aud_res,
+        "overall_accuracy": overall,
+    }
+
+
+def _render_dnb_grid(highlighted_pos: int, container: Optional[Any] = None, letter: Optional[str] = None):
     grid_css = """
     <style>
-    .nback-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        grid-template-rows: repeat(3, 1fr);
-        gap: 8px;
-        width: 300px;
-        height: 300px;
-        margin: 20px auto;
-        background-color: #2e2e2e;
-        padding: 20px;
-        border-radius: 10px;
-    }
-    .grid-cell {
-        background-color: #1e1e1e;
-        border: 2px solid #444;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 24px;
-        font-weight: bold;
-        transition: all 0.3s ease;
-    }
-    .grid-cell.highlighted {
-        background-color: #00ff88;
-        border-color: #00cc66;
-        color: #000;
-        box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
-    }
-    .grid-cell.normal {
-        background-color: #333;
-        border-color: #666;
-        color: #888;
-    }
+    .dnb-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:300px;height:300px;margin:10px auto}
+    .dnb-cell{border:2px solid #555;border-radius:10px;background:#1e1e1e}
+    .dnb-cell.on{background:rgba(0,255,136,0.8);border-color:#00ff88;box-shadow:0 0 20px rgba(0,255,136,0.5)}
     </style>
     """
-    
-    # Generate grid HTML
-    grid_html = grid_css + '<div class="nback-grid">'
-    
-    for pos in range(9):
-        if pos == highlighted_pos:
-            grid_html += f'<div class="grid-cell highlighted">●</div>'
-        else:
-            grid_html += f'<div class="grid-cell normal"></div>'
-    
-    grid_html += '</div>'
-    
-    st.markdown(grid_html, unsafe_allow_html=True)
-    st.caption(f"Position {highlighted_pos + 1} is highlighted")
+    html = [grid_css, '<div class="dnb-grid">']
+    for i in range(9):
+        cls = "dnb-cell on" if i == highlighted_pos else "dnb-cell"
+        html.append(f'<div class="{cls}"></div>')
+    html.append('</div>')
+    markup = "".join(html)
+    # Also show the current letter (if provided) for visibility
+    if letter is not None:
+        markup += f"<div style='text-align:center;margin-top:8px;color:#ddd;'>Letter: <b>{letter}</b></div>"
+    (container or st).markdown(markup, unsafe_allow_html=True)
 
-def _calculate_dual_nback_results(dnb):
-    """Calculate performance metrics for visual n-back session"""
-    # Visual performance only
-    visual_hits = len(dnb["visual_responses"] & dnb["visual_targets"])
-    visual_misses = len(dnb["visual_targets"] - dnb["visual_responses"])
-    visual_false_alarms = len(dnb["visual_responses"] - dnb["visual_targets"])
-    visual_correct_rejections = dnb["trials"] - len(dnb["visual_targets"]) - visual_false_alarms
-    
-    # Calculate accuracy
-    visual_accuracy = (visual_hits + visual_correct_rejections) / dnb["trials"] * 100
-    
-    return {
-        "visual_hits": visual_hits,
-        "visual_misses": visual_misses,
-        "visual_false_alarms": visual_false_alarms,
-        "visual_correct_rejections": visual_correct_rejections,
-        "visual_accuracy": visual_accuracy,
-        "overall_accuracy": visual_accuracy,
-        "total_targets": len(dnb["visual_targets"]),
-        "duration": (time.time() - dnb["session_start"]) / 60
-    }
+def _import_dualnback_results(runs_dir: str, started_after: Optional[float]):
+    """Find the newest CSV in runs_dir (optionally only those after started_after), parse key metrics."""
+    try:
+        import csv
+        latest_file = None
+        latest_mtime = -1
+        for name in os.listdir(runs_dir):
+            if not name.lower().endswith(".csv"):
+                continue
+            p = os.path.join(runs_dir, name)
+            try:
+                m = os.path.getmtime(p)
+            except Exception:
+                continue
+            if started_after and m <= started_after:
+                continue
+            if m > latest_mtime:
+                latest_mtime = m
+                latest_file = p
+        if not latest_file:
+            return None
 
-def _display_dual_nback_results(dnb):
-    """Display session results and performance analysis"""
-    st.success("Visual N-Back Session Complete!")
-    
-    results = dnb["results"]
-    
-    # Performance overview
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Overall Score", f"{results['overall_accuracy']:.1f}%")
-    with col2:
-        st.metric("Correct Hits", results['visual_hits'])
-    with col3:
-        st.metric("False Alarms", results['visual_false_alarms'])
-    
-    # Detailed breakdown
-    st.markdown("### Performance Details")
-    
-    # Visual performance only
-    st.markdown("**Visual Performance:**")
-    visual_col1, visual_col2, visual_col3, visual_col4 = st.columns(4)
-    
-    with visual_col1:
-        st.metric("Hits", results['visual_hits'])
-    with visual_col2:
-        st.metric("Misses", results['visual_misses'])
-    with visual_col3:
-        st.metric("False Alarms", results['visual_false_alarms'])
-    with visual_col4:
-        st.metric("Accuracy", f"{results['visual_accuracy']:.1f}%")
-    
-    # Performance feedback
-    if results['overall_accuracy'] >= 80:
-        st.success("Excellent performance! Consider increasing difficulty.")
-    elif results['overall_accuracy'] >= 60:
-        st.info("Good performance! Keep practicing at this level.")
-    else:
-        st.error("Consider reducing difficulty")
-    
-    # Session info
-    st.markdown("### Session Summary")
-    st.write(f"**N-Level:** {dnb['n']}")
-    st.write(f"**Trials:** {dnb['trials']}")
-    st.write(f"**Duration:** {results['duration']:.1f} minutes")
-    st.write(f"**Total Targets:** {results['total_targets']}")
-    
-    # Save results option
-    if st.button("Save Results & Start New Session", type="primary"):
-        # Simple save to session state for now
-        if "nback_history" not in st.session_state:
-            st.session_state["nback_history"] = []
-        
-        session_data = {
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "n_level": dnb['n'],
-            "trials": dnb['trials'],
-            "accuracy": results['overall_accuracy'],
-            "hits": results['visual_hits'],
-            "false_alarms": results['visual_false_alarms']
-        }
-        
-        st.session_state["nback_history"].append(session_data)
-        st.success("Results saved!")
-        st.session_state["dual_nback"] = None
-        st.rerun()
-    
-    # Strategy reflection
-    st.markdown("### Strategy Reflection")
-    strategy_rating = st.slider(f"How well did your strategy work?", 1, 5, 3, 
-                              help="1=Not helpful, 5=Very helpful")
-    
-    with col1:
-        st.metric("👁️ Visual Accuracy", f"{results['visual']['accuracy']:.1f}%")
-        st.caption(f"Hits: {results['visual']['hits']} • False Alarms: {results['visual']['false_alarms']}")
-    
-    with col2:
-        st.metric("🔊 Audio Accuracy", f"{results['audio']['accuracy']:.1f}%")
-        st.caption(f"Hits: {results['audio']['hits']} • False Alarms: {results['audio']['false_alarms']}")
-    
-    with col3:
-        st.metric("Overall Score", f"{results['overall_accuracy']:.1f}%")
-        
-        # Performance feedback
-        if results['overall_accuracy'] >= 85:
-            st.success("🌟 Excellent! Try increasing N-level")
-        elif results['overall_accuracy'] >= 70:
-            st.info("👍 Good performance!")
-        elif results['overall_accuracy'] >= 55:
-            st.warning("💪 Keep practicing at this level")
-        else:
-            st.error("Consider reducing difficulty")
-    
-    # Detailed breakdown
-    with st.expander("Detailed Performance Analysis"):
-        col_a, col_b = st.columns(2)
-        
-        with col_a:
-            st.markdown("**Visual Performance:**")
-            st.write(f"• Hits: {results['visual']['hits']}")
-            st.write(f"• Misses: {results['visual']['misses']}")
-            st.write(f"• False Alarms: {results['visual']['false_alarms']}")
-            st.write(f"• Correct Rejections: {results['visual']['correct_rejections']}")
-        
-        with col_b:
-            st.markdown("**Audio Performance:**")
-            st.write(f"• Hits: {results['audio']['hits']}")
-            st.write(f"• Misses: {results['audio']['misses']}")
-            st.write(f"• False Alarms: {results['audio']['false_alarms']}")
-            st.write(f"• Correct Rejections: {results['audio']['correct_rejections']}")
-    
-    # Save results and mark completion
-    if st.button("💾 Save Results & Start New Session", type="primary"):
-        _save_dual_nback_results(dnb, results)
-        st.session_state["dual_nback"] = None
-        st.success("Results saved!")
-        st.rerun()
+        # Naive parse: read last row and look for summary columns; fallback to simple metrics
+        with open(latest_file, newline="", encoding="utf-8") as f:
+            reader = list(csv.DictReader(f))
+        if not reader:
+            return None
+        last = reader[-1]
 
-def _save_dual_nback_results(dnb, results):
-    """Save dual n-back session results to user profile"""
-    if "nback_history" not in S():
-        S()["nback_history"] = []
-    
-    session_data = {
-        "date": today_iso(),
-        "type": "dual_nback",
-        "n_level": dnb["n"],
-        "trials": dnb["trials"],
-        "interval": dnb["interval"],
-        "visual_accuracy": results["visual"]["accuracy"],
-        "audio_accuracy": results["audio"]["accuracy"], 
-        "overall_accuracy": results["overall_accuracy"],
-        "duration": results["duration"],
-        "timestamp": time.time()
-    }
-    
-    S()["nback_history"].append(session_data)
-    mark_completed("nback")
-    
-    # Adaptive system update
-    level_achieved = NBACK_GRID.index((dnb["n"], dnb["interval"])) if (dnb["n"], dnb["interval"]) in NBACK_GRID else 0
-    adaptive_update("nback", level_achieved, results["overall_accuracy"])
-    
-    # Check and award milestone for progressive improvement
-    sessions_this_week = len([s for s in S()["nback_history"] if (time.time() - s["timestamp"]) < 604800])  # 7 days
-    
-    milestone_awarded = check_and_award_milestone("nback", level_achieved, sessions_this_week)
-    if milestone_awarded:
-        st.balloons()
-        st.success("🏆 Milestone achieved! You've shown consistent improvement in N-Back training this week!")
-    
-    save_state()
+        # Try to infer fields commonly logged (best-effort)
+        result = {"source_file": latest_file}
+        # Map potential aliases
+        def pick(d, keys, cast=float, default=None):
+            for k in keys:
+                if k in d and d[k] not in (None, ""):
+                    try:
+                        return cast(d[k])
+                    except Exception:
+                        return default
+            return default
+
+        result["overall_accuracy"] = pick(last, ["overall_accuracy", "accuracy", "overall%", "score%"], float, None)
+        result["n_level"] = pick(last, ["n", "n_level", "N"], int, None)
+        result["trials"] = pick(last, ["trials", "total_trials", "T"], int, None)
+        result["duration_sec"] = pick(last, ["duration_sec", "seconds", "elapsed"], float, None)
+        return result
+    except Exception:
+        return None
+
 
 # ----- Processing Speed Training -----
 def page_processing_speed():
