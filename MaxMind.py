@@ -627,18 +627,72 @@ def record_session_performance(activity: str, score: int, total: int, time_secon
 # ========== AI Topic Generation System ==========
 def generate_intelligent_topic(domain: str = None, difficulty_level: int = 1):
     """Generate educational topics based on domain and difficulty"""
+    api_key = get_ai_api_key()
     
-    # Knowledge domain topic pools organized by difficulty
-    topic_pools = {
+    # Domain list for random selection
+    available_domains = ["philosophy", "neuroscience", "psychology", "economics", "political_science", 
+                        "cognitive_science", "systems_thinking", "decision_theory", "epistemology", "history"]
+    
+    # Select domain
+    if not domain:
+        domain = random.choice(available_domains)
+    
+    # Get user's current level in this domain
+    user_level = S().get("topic_suggestions", {}).get("knowledge_domains", {}).get(domain, {}).get("level", 1)
+    effective_level = min(3, max(1, user_level))
+    
+    # AI-powered topic generation if API key available
+    if api_key:
+        try:
+            # Level-specific prompts for AI generation
+            level_descriptions = {
+                1: "foundational concepts that provide essential building blocks for understanding this domain",
+                2: "intermediate concepts that build upon foundational knowledge and explore more nuanced applications", 
+                3: "cutting-edge, advanced topics that represent the current frontier of knowledge and debate in this domain"
+            }
+            
+            prompt = f"""Generate a specific, intellectually engaging study topic for {domain.replace('_', ' ')} at level {effective_level} (1=beginner, 2=intermediate, 3=advanced).
+
+Level {effective_level} focus: {level_descriptions[effective_level]}
+
+Return JSON with:
+- topic: Specific, engaging topic name (not generic)
+- domain: {domain}
+- level: {effective_level}
+- description: 1-2 sentences explaining why this topic matters and what makes it interesting
+- suggested_duration: "15-20 minutes"
+- learning_objective: Clear, specific learning goal
+
+Make the topic:
+- Fresh and specific (avoid generic titles)
+- Intellectually stimulating 
+- Appropriate for the level (foundational→intermediate→cutting-edge)
+- Connected to broader themes in {domain.replace('_', ' ')}
+
+Examples of good topics:
+Level 1: "The Paradox of Choice in Decision Making" 
+Level 2: "Bounded Rationality and Satisficing Behavior"
+Level 3: "Computational Models of Human Irrationality"
+"""
+
+            response = generate_ai_content(prompt)
+            
+            if response.startswith('{'):
+                try:
+                    topic_data = json.loads(response)
+                    return topic_data
+                except json.JSONDecodeError:
+                    pass
+            
+        except Exception as e:
+            st.warning(f"AI topic generation failed: {e}")
+    
+    # Fallback to enhanced static topics organized by level
+    fallback_topics = {
         "philosophy": {
             1: ["Socratic Method", "Stoicism basics", "Plato's Cave Allegory", "Aristotelian Ethics", "Free Will vs Determinism"],
             2: ["Existentialism", "Phenomenology", "Virtue Ethics", "Deontological Ethics", "Philosophy of Mind"],
             3: ["Logical Positivism", "Post-Structuralism", "Modal Logic", "Philosophy of Language", "Metaphysics of Time"]
-        },
-        "history": {
-            1: ["Industrial Revolution", "Enlightenment Era", "Renaissance", "Ancient Greek Democracy", "Roman Empire"],
-            2: ["Scientific Revolution", "Age of Exploration", "French Revolution", "American Civil War", "World War I"],
-            3: ["Weimar Republic", "Decolonization", "Cold War Dynamics", "Medieval Scholasticism", "Byzantine Empire"]
         },
         "neuroscience": {
             1: ["Neuroplasticity", "Dopamine and Motivation", "Memory Formation", "Sleep and Brain Health", "Stress Response"],
@@ -679,19 +733,16 @@ def generate_intelligent_topic(domain: str = None, difficulty_level: int = 1):
             1: ["Scientific Method", "Falsifiability", "Induction vs Deduction", "Knowledge vs Belief", "Empiricism vs Rationalism"],
             2: ["Paradigm Shifts", "Theory-Ladenness", "Underdetermination", "Realism vs Anti-realism", "Social Construction"],
             3: ["Gettier Problems", "Externalism", "Reliabilism", "Foundationalism", "Coherentism"]
+        },
+        "history": {
+            1: ["Industrial Revolution", "Enlightenment Era", "Renaissance", "Ancient Greek Democracy", "Roman Empire"],
+            2: ["Scientific Revolution", "Age of Exploration", "French Revolution", "American Civil War", "World War I"],
+            3: ["Weimar Republic", "Decolonization", "Cold War Dynamics", "Medieval Scholasticism", "Byzantine Empire"]
         }
     }
     
-    # Select domain
-    if not domain:
-        domain = random.choice(list(topic_pools.keys()))
-    
-    # Get user's current level in this domain
-    user_level = S().get("topic_suggestions", {}).get("knowledge_domains", {}).get(domain, {}).get("level", 1)
-    effective_level = min(3, max(1, user_level))
-    
     # Get topic pool for this level
-    available_topics = topic_pools.get(domain, {}).get(effective_level, ["General Knowledge"])
+    available_topics = fallback_topics.get(domain, {}).get(effective_level, ["General Knowledge"])
     
     # Avoid recent topics
     recent_topics = S().get("topic_suggestions", {}).get("knowledge_domains", {}).get(domain, {}).get("recent_topics", [])
